@@ -1,0 +1,73 @@
+# VNC/WebSocket слой поверх runner-core
+FROM camoufox:runner-core
+
+USER root
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      xvfb x11vnc websockify novnc procps \
+    && rm -rf /var/lib/apt/lists/*
+
+# ВАЖНО: дальше используем bash (sh не умеет 'set -o pipefail')
+SHELL ["/bin/bash", "-lc"]
+
+# Стартовый скрипт через heredoc (BuildKit поддерживается по умолчанию)
+RUN <<'BASH'
+set -euo pipefail
+
+cat >/usr/local/bin/vnc-start.sh <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${DISPLAY:=:1}"
+: "${VNC_RES:=1920x1080x24}"
+: "${VNC_PORT:=5900}"
+: "${WS_PORT:=6900}"
+: "${VNC_PASSWORD:=}"
+
+# 1) Xvfb — виртуальный дисплей
+Xvfb "$DISPLAY" -screen 0 "$VNC_RES" +extension RANDR -nolisten tcp &
+sleep 0.5
+
+# 2) x11vnc — VNC поверх Xvfb
+if [ -n "$VNC_PASSWORD" ]; then
+  PASSFILE="/tmp/vncpass"
+  x11vnc -storepasswd "$VNC_PASSWORD" "$PASSFILE" >/dev/null
+  X11VNC_AUTH="-rfbauth $PASSFILE"
+else
+  X11VNC_AUTH="-nopw"
+fi
+x11vnc -display "$DISPLAY" -shared -forever -rfbport "$VNC_PORT" $X11VNC_AUTH -quiet &
+X11VNC_PID=$!
+
+# 3) websockify — VNC → WebSocket (для noVNC)
+if command -v websockify >/dev/null 2>&1; then
+  if [ -d /usr/share/novnc ]; then
+    websockify --web=/usr/share/novnc/ "$WS_PORT" localhost:"$VNC_PORT" &
+  else
+    websockify "$WS_PORT" localhost:"$VNC_PORT" &
+  fi
+fi
+
+echo "[VNC] DISPLAY=$DISPLAY  VNC=:${VNC_PORT}  WS=:${WS_PORT}  RES=$VNC_RES"
+if [ -d /usr/share/novnc ]; then
+  echo "[VNC] Open: http://<host>:${WS_PORT}/vnc.html?path=websockify"
+fi
+
+# Держим контейнер живым
+wait "$X11VNC_PID"
+SCRIPT
+
+chmod +x /usr/local/bin/vnc-start.sh
+BASH
+
+EXPOSE 5900 6900
+
+# Возвращаемся под обычного пользователя
+USER pwuser
+
+# Значения по умолчанию (без VNC_PASSWORD — передавайте его при запуске)
+ENV DISPLAY=":1" \
+    VNC_RES="1920x1080x24" \
+    VNC_PORT="5900" \
+    WS_PORT="6900"
+
+CMD ["/usr/local/bin/vnc-start.sh"]
