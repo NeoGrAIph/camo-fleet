@@ -75,7 +75,10 @@ export default function App(): JSX.Element {
         headless: form.headless,
         idle_ttl_seconds: form.idle,
       });
-      setSessions((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
+      setSessions((prev) => [
+        created,
+        ...prev.filter((item) => item.worker !== created.worker || item.id !== created.id),
+      ]);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

@@ -5,8 +5,7 @@ metadata:
   labels:
     app: camofleet-control
 data:
-  CONTROL_WORKERS: >-
-    [{"name":"worker-0","url":"http://camofleet-worker:8080","vnc_ws":"ws://camofleet-worker:6900","vnc_http":"http://camofleet-worker:6900"}]
+  CONTROL_WORKERS: '[{"name":"worker-0","url":"http://camofleet-worker:8080","vnc_ws":"ws://camofleet-worker:6900","vnc_http":"http://camofleet-worker:6900"}]'
 ---
 apiVersion: apps/v1
 kind: Deployment

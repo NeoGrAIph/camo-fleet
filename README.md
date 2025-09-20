@@ -68,6 +68,26 @@ npm run dev
 
 Vite-прокси направит `/api` запросы на control-plane (`http://127.0.0.1:9000`).
 
+## Docker Desktop (Windows)
+
+Ниже описан полностью контейнеризованный сценарий для Docker Desktop на Windows (WSL2 backend).
+
+1. Установите [Docker Desktop](https://www.docker.com/products/docker-desktop/) и убедитесь, что включён режим Linux Containers.
+2. Склонируйте репозиторий и откройте PowerShell/Terminal от имени пользователя:
+   ```powershell
+   cd path\to\Camo-fleet
+   docker compose up --build
+   ```
+   Первая сборка займёт время (Playwright качает браузеры ~1–2 ГБ).
+3. После старта сервисов:
+   - UI: `http://localhost:8080`
+   - Control-plane API: `http://localhost:9000`
+   - noVNC: ссылки появляются в UI; базовый адрес `http://localhost:6900`
+4. Для остановки окружения выполните:
+   ```powershell
+   docker compose down
+   ```
+
 ## Docker-образы
 
 Сборка образов (замените `REGISTRY` на собственный реестр):
