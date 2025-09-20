@@ -20,7 +20,14 @@ RUN chmod +x /usr/local/bin/vnc-start.sh /usr/local/bin/worker-entrypoint.sh
 
 COPY worker /opt/app
 WORKDIR /opt/app
-RUN pip install --no-cache-dir . && playwright install --with-deps
+
+ARG INSTALL_MODE=release
+RUN if [ "$INSTALL_MODE" = "dev" ]; then \
+      pip install --no-cache-dir -e .[dev]; \
+    else \
+      pip install --no-cache-dir .; \
+    fi \
+    && playwright install --with-deps
 
 USER pwuser
 ENV DISPLAY=":1" \
