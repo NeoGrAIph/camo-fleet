@@ -16,7 +16,7 @@ class DummyBrowserFactory:
         self.name = name
         self.calls: list[dict[str, Any]] = []
 
-    async def launch_server(self, headless: bool) -> "DummyServer":
+    async def launch(self, headless: bool) -> "DummyServer":
         self.calls.append({"headless": headless})
         return DummyServer(self.name)
 
@@ -39,12 +39,19 @@ class DummyServer:
 
 
 @pytest_asyncio.fixture()
-async def manager() -> SessionManager:
+async def manager(monkeypatch: pytest.MonkeyPatch) -> SessionManager:
     settings = WorkerSettings(
         session_defaults=SessionDefaults(idle_ttl_seconds=30, browser="chromium", headless=True),
         cleanup_interval=1,
     )
     playwright = DummyPlaywright()
+
+    async def fake_launch(self: SessionManager, browser_name: str, *, headless: bool) -> DummyServer:
+        factory = getattr(self._playwright, browser_name)
+        return await factory.launch(headless=headless)
+
+    monkeypatch.setattr(SessionManager, "_launch_browser_server", fake_launch)
+
     mgr = SessionManager(settings, playwright)
     await mgr.start()
     yield mgr
