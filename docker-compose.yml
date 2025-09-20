@@ -1,0 +1,34 @@
+version: '3.9'
+
+services:
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    environment:
+      WORKER_VNC_WS_BASE: ws://localhost:6900
+      WORKER_VNC_HTTP_BASE: http://localhost:6900
+    ports:
+      - '6900:6900'
+      - '5900:5900'
+
+  control-plane:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.control
+    environment:
+      CONTROL_WORKERS: '[{"name":"local","url":"http://worker:8080","vnc_ws":"ws://localhost:6900","vnc_http":"http://localhost:6900"}]'
+    depends_on:
+      - worker
+    ports:
+      - '9000:9000'
+
+  ui:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ui
+    depends_on:
+      - control-plane
+    ports:
+      - '8080:80'
+

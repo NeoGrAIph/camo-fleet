@@ -1,11 +1,10 @@
+.git
+.gitignore
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.DS_Store
+*.py[cod]
 .env
-*.egg-info/
 node_modules/
-dist/
 ui/node_modules/
 ui/dist/
+dist/
+Dockerfile
