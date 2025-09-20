@@ -1,0 +1,32 @@
+FROM mcr.microsoft.com/playwright/python:v1.55.0-noble
+
+USER root
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      ffmpeg locales ca-certificates fontconfig \
+      fonts-liberation fonts-dejavu-core fonts-dejavu-extra \
+      fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji \
+      xvfb x11vnc websockify novnc \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN sed -i 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
+    locale-gen
+ENV LANG=en_US.UTF-8 \
+    LC_ALL=en_US.UTF-8
+
+COPY docker/scripts/vnc-start.sh /usr/local/bin/vnc-start.sh
+COPY docker/scripts/worker-entrypoint.sh /usr/local/bin/worker-entrypoint.sh
+RUN chmod +x /usr/local/bin/vnc-start.sh /usr/local/bin/worker-entrypoint.sh
+
+COPY worker /opt/app
+WORKDIR /opt/app
+RUN pip install --no-cache-dir . && playwright install --with-deps
+
+USER pwuser
+ENV DISPLAY=":1" \
+    VNC_PORT="5900" \
+    WS_PORT="6900" \
+    WORKER_PORT="8080"
+
+EXPOSE 8080 5900 6900
+CMD ["/usr/local/bin/worker-entrypoint.sh"]
