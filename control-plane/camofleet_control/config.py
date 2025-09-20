@@ -16,6 +16,7 @@ class WorkerConfig(BaseModel):
     url: Annotated[str, Field(min_length=1)]
     vnc_ws: str | None = None
     vnc_http: str | None = None
+    supports_vnc: bool = False
 
 
 class ControlSettings(BaseSettings):
@@ -27,7 +28,11 @@ class ControlSettings(BaseSettings):
     port: int = 9000
     workers: list[WorkerConfig] = Field(
         default_factory=lambda: [
-            WorkerConfig(name="local", url="http://worker:8080", vnc_ws="ws://worker:6900"),
+            WorkerConfig(
+                name="local",
+                url="http://worker:8080",
+                supports_vnc=False,
+            ),
         ]
     )
     request_timeout: float = 10.0

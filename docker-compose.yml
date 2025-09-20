@@ -1,26 +1,64 @@
-version: '3.9'
-
 services:
+  runner-headless:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.runner
+    environment:
+      RUNNER_PORT: 8070
+    expose:
+      - '8070'
+
+  runner-vnc:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.runner-vnc
+    environment:
+      RUNNER_PORT: 8070
+      RUNNER_VNC_WS_BASE: ws://localhost:6900
+      RUNNER_VNC_HTTP_BASE: http://localhost:6900
+    ports:
+      - '6900:6900'
+      - '5900:5900'
+
   worker:
     build:
       context: .
       dockerfile: docker/Dockerfile.worker
     environment:
-      WORKER_VNC_WS_BASE: ws://localhost:6900
-      WORKER_VNC_HTTP_BASE: http://localhost:6900
-    ports:
-      - '6900:6900'
-      - '5900:5900'
+      WORKER_RUNNER_BASE_URL: http://runner-headless:8070
+      WORKER_SUPPORTS_VNC: 'false'
+    depends_on:
+      - runner-headless
+    expose:
+      - '8080'
+
+  worker-vnc:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    environment:
+      WORKER_RUNNER_BASE_URL: http://runner-vnc:8070
+      WORKER_SUPPORTS_VNC: 'true'
+    depends_on:
+      - runner-vnc
+    expose:
+      - '8080'
 
   control-plane:
     build:
       context: .
       dockerfile: docker/Dockerfile.control
     environment:
-      CONTROL_WORKERS: '[{"name":"local","url":"http://worker:8080","vnc_ws":"ws://localhost:6900","vnc_http":"http://localhost:6900"}]'
       CONTROL_PUBLIC_API_PREFIX: /api
+      CONTROL_WORKERS: >-
+        [
+          {"name":"headless","url":"http://worker:8080","supports_vnc":false},
+          {"name":"vnc","url":"http://worker-vnc:8080","supports_vnc":true,
+           "vnc_ws":"ws://localhost:6900","vnc_http":"http://localhost:6900"}
+        ]
     depends_on:
       - worker
+      - worker-vnc
     ports:
       - '9000:9000'
 

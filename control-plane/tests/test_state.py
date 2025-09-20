@@ -35,6 +35,17 @@ def test_pick_worker_by_name() -> None:
         state.pick_worker("missing")
 
 
+def test_pick_worker_requires_vnc() -> None:
+    workers = [
+        WorkerConfig(name="headless", url="http://a", supports_vnc=False),
+        WorkerConfig(name="vnc", url="http://b", supports_vnc=True),
+    ]
+    state = AppState(make_settings(workers))
+    assert state.pick_worker(require_vnc=True).name == "vnc"
+    with pytest.raises(HTTPException):
+        state.pick_worker("headless", require_vnc=True)
+
+
 def test_normalise_public_prefix() -> None:
     assert normalise_public_prefix("/") == ""
     assert normalise_public_prefix("/api/") == "/api"

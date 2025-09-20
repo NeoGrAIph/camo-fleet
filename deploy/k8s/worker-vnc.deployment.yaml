@@ -1,28 +1,36 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: camofleet-worker
+  name: camofleet-worker-vnc
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: camofleet-worker
+      app: camofleet-worker-vnc
   template:
     metadata:
       labels:
-        app: camofleet-worker
-        camofleet-role: worker
+        app: camofleet-worker-vnc
+        camofleet-role: worker-vnc
     spec:
       containers:
         - name: runner
-          image: REGISTRY/camofleet-runner:latest
+          image: REGISTRY/camofleet-runner-vnc:latest
           imagePullPolicy: IfNotPresent
           env:
             - name: RUNNER_PORT
               value: "8070"
+            - name: RUNNER_VNC_WS_BASE
+              value: ws://camofleet-worker-vnc:6900
+            - name: RUNNER_VNC_HTTP_BASE
+              value: http://camofleet-worker-vnc:6900
           ports:
             - containerPort: 8070
               name: runner-http
+            - containerPort: 6900
+              name: vnc-ws
+            - containerPort: 5900
+              name: vnc-raw
         - name: worker
           image: REGISTRY/camofleet-worker:latest
           imagePullPolicy: IfNotPresent
@@ -30,7 +38,7 @@ spec:
             - name: WORKER_RUNNER_BASE_URL
               value: http://localhost:8070
             - name: WORKER_SUPPORTS_VNC
-              value: "false"
+              value: "true"
           ports:
             - containerPort: 8080
               name: http
@@ -44,11 +52,14 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: camofleet-worker
+  name: camofleet-worker-vnc
 spec:
   selector:
-    app: camofleet-worker
+    app: camofleet-worker-vnc
   ports:
     - port: 8080
       targetPort: http
       name: http
+    - port: 6900
+      targetPort: vnc-ws
+      name: vnc-ws

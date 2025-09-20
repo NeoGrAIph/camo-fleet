@@ -1,14 +1,15 @@
-"""Application factory."""
+"""Worker service that proxies requests to the Camoufox runner sidecar."""
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
 import logging
+import uuid
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, status
+import httpx
+from fastapi import Depends, FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
-from playwright.async_api import async_playwright
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
 import websockets
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
@@ -19,64 +20,32 @@ from .models import (
     SessionCreateRequest,
     SessionDeleteResponse,
     SessionDetail,
+    SessionStatus,
 )
-from .sessions import SessionManager
+from .runner_client import RunnerClient
 
 LOGGER = logging.getLogger(__name__)
 
 
 class AppState:
-    """Holds runtime state for the FastAPI app."""
-
     def __init__(self, settings: WorkerSettings) -> None:
         self.settings = settings
-        self.manager: SessionManager | None = None
+        self.runner = RunnerClient(settings.runner_base_url)
         self.registry = CollectorRegistry()
-        self._playwright_context = None
-
-    async def startup(self) -> None:
-        LOGGER.info("Starting Camofleet worker")
-        self._playwright_context = await async_playwright().start()
-        manager = SessionManager(self.settings, self._playwright_context)
-        await manager.start()
-        self.manager = manager
+        self.worker_id = str(uuid.uuid4())
 
     async def shutdown(self) -> None:
-        LOGGER.info("Shutting down Camofleet worker")
-        if self.manager:
-            await self.manager.close()
-        if self._playwright_context:
-            await self._playwright_context.stop()
+        await self.runner.close()
 
 
 def get_settings() -> WorkerSettings:
     return load_settings()
 
 
-def get_app_state(request: Request) -> AppState:
-    state = getattr(request.app.state, "app_state", None)
-    if not isinstance(state, AppState):
-        raise HTTPException(status_code=500, detail="Worker state is unavailable")
-    return state
-
-
-def get_app_state_from_websocket(websocket: WebSocket) -> AppState:
-    state = getattr(websocket.app.state, "app_state", None)
-    if not isinstance(state, AppState):
-        raise HTTPException(status_code=500, detail="Worker state is unavailable")
-    return state
-
-
-def get_manager(state: AppState = Depends(get_app_state)) -> SessionManager:
-    if not state.manager:
-        raise HTTPException(status_code=503, detail="Worker is still initialising")
-    return state.manager
-
-
 def create_app(settings: WorkerSettings | None = None) -> FastAPI:
-    fastapi_app = FastAPI(title="Camofleet Worker", version="0.1.0")
-
-    fastapi_app.add_middleware(
+    cfg = settings or load_settings()
+    app = FastAPI(title="Camofleet Worker", version="0.2.0")
+    app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
         allow_credentials=True,
@@ -84,98 +53,116 @@ def create_app(settings: WorkerSettings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
-    resolved_settings = settings or load_settings()
-    state = AppState(resolved_settings)
-    fastapi_app.state.app_state = state
+    state = AppState(cfg)
+    app.state.app_state = state
 
-    @fastapi_app.on_event("startup")
-    async def _startup() -> None:
-        await state.startup()
-
-    @fastapi_app.on_event("shutdown")
+    @app.on_event("shutdown")
     async def _shutdown() -> None:
         await state.shutdown()
 
-    @fastapi_app.get("/health", response_model=HealthResponse)
-    async def health() -> HealthResponse:
-        checks = {"playwright": "ok" if state.manager else "starting"}
-        return HealthResponse(status="ok", version=fastapi_app.version, checks=checks)
+    def require_state() -> AppState:
+        return state
 
-    @fastapi_app.get("/sessions", response_model=list[SessionDetail])
-    async def list_sessions(manager: SessionManager = Depends(get_manager)) -> list[SessionDetail]:
-        return await manager.list_details()
+    @app.get("/health", response_model=HealthResponse)
+    async def health(app_state: AppState = Depends(require_state)) -> HealthResponse:
+        try:
+            runner_health = await app_state.runner.health()
+            status_text = runner_health.get("status", "unknown")
+            checks = runner_health.get("checks", {})
+        except Exception as exc:  # pragma: no cover - defensive path
+            LOGGER.warning("Runner health check failed: %s", exc)
+            status_text = "degraded"
+            checks = {"runner": "unreachable"}
+        return HealthResponse(status=status_text, version=app.version, checks=checks)
 
-    @fastapi_app.post(
-        "/sessions",
-        status_code=status.HTTP_201_CREATED,
-        response_model=SessionDetail,
-    )
+    @app.get("/sessions", response_model=list[SessionDetail])
+    async def list_sessions(app_state: AppState = Depends(require_state)) -> list[SessionDetail]:
+        data = await app_state.runner.list_sessions()
+        return [_to_worker_detail(app_state, item) for item in data]
+
+    @app.post("/sessions", response_model=SessionDetail, status_code=status.HTTP_201_CREATED)
     async def create_session(
         request: SessionCreateRequest,
-        manager: SessionManager = Depends(get_manager),
+        app_state: AppState = Depends(require_state),
     ) -> SessionDetail:
+        if request.vnc and not app_state.settings.supports_vnc:
+            raise HTTPException(status_code=400, detail="VNC is not supported by this worker")
         payload = request.model_dump(exclude_unset=True)
-        handle = await manager.create(payload)
-        vnc_payload = manager.vnc_payload_for(handle)
-        return handle.detail(vnc_payload, manager.ws_endpoint_for(handle))
+        payload.setdefault("headless", app_state.settings.session_defaults.headless)
+        payload.setdefault("idle_ttl_seconds", app_state.settings.session_defaults.idle_ttl_seconds)
+        data = await app_state.runner.create_session(payload)
+        return _to_worker_detail(app_state, data)
 
-    @fastapi_app.get("/sessions/{session_id}", response_model=SessionDetail)
-    async def get_session(session_id: str, manager: SessionManager = Depends(get_manager)) -> SessionDetail:
-        handle = await manager.get(session_id)
-        if not handle:
-            raise HTTPException(status_code=404, detail="Session not found")
-        return handle.detail(
-            manager.vnc_payload_for(handle),
-            manager.ws_endpoint_for(handle),
-        )
+    @app.get("/sessions/{session_id}", response_model=SessionDetail)
+    async def get_session(session_id: str, app_state: AppState = Depends(require_state)) -> SessionDetail:
+        try:
+            data = await app_state.runner.get_session(session_id)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                raise HTTPException(status_code=404, detail="Session not found") from exc
+            raise
+        return _to_worker_detail(app_state, data)
 
-    @fastapi_app.delete("/sessions/{session_id}", response_model=SessionDeleteResponse)
-    async def delete_session(
-        session_id: str,
-        manager: SessionManager = Depends(get_manager),
-    ) -> SessionDeleteResponse:
-        handle = await manager.delete(session_id)
-        if not handle:
-            raise HTTPException(status_code=404, detail="Session not found")
-        return SessionDeleteResponse(id=handle.id, status=handle.status)
+    @app.delete("/sessions/{session_id}", response_model=SessionDeleteResponse)
+    async def delete_session(session_id: str, app_state: AppState = Depends(require_state)) -> SessionDeleteResponse:
+        try:
+            data = await app_state.runner.delete_session(session_id)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                raise HTTPException(status_code=404, detail="Session not found") from exc
+            raise
+        return SessionDeleteResponse(id=data["id"], status=SessionStatus(data["status"]))
 
-    @fastapi_app.post("/sessions/{session_id}/touch", response_model=SessionDetail)
-    async def touch_session(
-        session_id: str,
-        manager: SessionManager = Depends(get_manager),
-    ) -> SessionDetail:
-        handle = await manager.touch(session_id)
-        if not handle:
-            raise HTTPException(status_code=404, detail="Session not found")
-        return handle.detail(
-            manager.vnc_payload_for(handle),
-            manager.ws_endpoint_for(handle),
-        )
+    @app.post("/sessions/{session_id}/touch", response_model=SessionDetail)
+    async def touch_session(session_id: str, app_state: AppState = Depends(require_state)) -> SessionDetail:
+        try:
+            data = await app_state.runner.touch_session(session_id)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                raise HTTPException(status_code=404, detail="Session not found") from exc
+            raise
+        return _to_worker_detail(app_state, data)
 
-    @fastapi_app.get(resolved_settings.metrics_endpoint)
-    async def metrics() -> Response:
-        data = generate_latest(state.registry)
+    @app.get(cfg.metrics_endpoint)
+    async def metrics(app_state: AppState = Depends(require_state)) -> Response:
+        data = generate_latest(app_state.registry)
         return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 
-    @fastapi_app.websocket("/sessions/{session_id}/ws")
-    async def session_websocket(
-        websocket: WebSocket,
-        session_id: str,
-    ) -> None:
-        state = get_app_state_from_websocket(websocket)
-        manager = get_manager(state=state)
-        handle = await manager.get(session_id)
-        if not handle:
+    @app.websocket("/sessions/{session_id}/ws")
+    async def session_websocket(session_id: str, websocket: WebSocket) -> None:
+        await websocket.accept()
+        try:
+            data = await state.runner.get_session(session_id)
+        except httpx.HTTPStatusError:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
-        await websocket.accept()
-        upstream_endpoint = handle.server.ws_endpoint
+        except Exception:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+        upstream_endpoint = data.get("ws_endpoint")
+        if not upstream_endpoint:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
         await _bridge_websocket(websocket, upstream_endpoint)
 
-    return fastapi_app
+    return app
 
 
-app = create_app()
+def _to_worker_detail(app_state: AppState, data: dict) -> SessionDetail:
+    return SessionDetail(
+        id=data["id"],
+        status=SessionStatus(data["status"]),
+        created_at=data["created_at"],
+        last_seen_at=data["last_seen_at"],
+        browser="camoufox",
+        headless=data["headless"],
+        idle_ttl_seconds=data["idle_ttl_seconds"],
+        labels=data.get("labels", {}),
+        worker_id=app_state.worker_id,
+        vnc_enabled=data.get("vnc", False),
+        ws_endpoint=f"/sessions/{data['id']}/ws",
+        vnc=data.get("vnc_info", {}),
+    )
 
 
 async def _bridge_websocket(websocket: WebSocket, upstream_endpoint: str) -> None:
@@ -183,11 +170,11 @@ async def _bridge_websocket(websocket: WebSocket, upstream_endpoint: str) -> Non
         async with websockets.connect(upstream_endpoint, ping_interval=None) as upstream:
             client_to_upstream = asyncio.create_task(
                 _forward_client_to_upstream(websocket, upstream),
-                name="playwright-bridge-client->upstream",
+                name="camoufox-bridge-client->upstream",
             )
             upstream_to_client = asyncio.create_task(
                 _forward_upstream_to_client(websocket, upstream),
-                name="playwright-bridge-upstream->client",
+                name="camoufox-bridge-upstream->client",
             )
             done, pending = await asyncio.wait(
                 {client_to_upstream, upstream_to_client},
@@ -236,4 +223,4 @@ async def _forward_upstream_to_client(websocket: WebSocket, upstream: websockets
             await websocket.close()
 
 
-__all__ = ["create_app", "app"]
+__all__ = ["create_app"]

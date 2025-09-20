@@ -34,8 +34,8 @@ class AppState:
     def list_workers(self) -> list[WorkerConfig]:
         return list(self.settings.workers)
 
-    def pick_worker(self, preferred: str | None = None) -> WorkerConfig:
-        workers = self.list_workers()
+    def pick_worker(self, preferred: str | None = None, *, require_vnc: bool = False) -> WorkerConfig:
+        workers = [w for w in self.list_workers() if not require_vnc or w.supports_vnc]
         if preferred:
             for worker in workers:
                 if worker.name == preferred:
@@ -98,12 +98,13 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                             status=item["status"],
                             created_at=item["created_at"],
                             last_seen_at=item["last_seen_at"],
-                            browser=item["browser"],
+                            browser=item.get("browser", "camoufox"),
                             headless=item["headless"],
                             idle_ttl_seconds=item["idle_ttl_seconds"],
                             labels=item.get("labels", {}),
                             ws_endpoint=public_ws_endpoint,
-                            vnc=item.get("vnc", {}),
+                            vnc_enabled=item.get("vnc_enabled"),
+                            vnc=item.get("vnc", item.get("vnc_info", {})),
                         )
                     )
         return results
@@ -113,7 +114,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         request: CreateSessionRequest,
         state: AppState = Depends(get_state),
     ) -> CreateSessionResponse:
-        worker = state.pick_worker(request.worker)
+        worker = state.pick_worker(request.worker, require_vnc=request.vnc)
         payload = request.model_dump(exclude_unset=True)
         payload.pop("worker", None)
         async with worker_client(worker, cfg) as client:
@@ -122,6 +123,11 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             raise HTTPException(status_code=response.status_code, detail=response.text)
         body = response.json()
         body["ws_endpoint"] = build_public_ws_endpoint(cfg, worker.name, body["id"])
+        body.setdefault("browser", "camoufox")
+        if "vnc" not in body and "vnc_info" in body:
+            body["vnc"] = body.pop("vnc_info")
+        if "vnc_enabled" not in body and "vnc" in body:
+            body["vnc_enabled"] = bool(body["vnc"].get("http") or body["vnc"].get("ws"))
         return CreateSessionResponse(worker=worker.name, **body)
 
     @app.get("/sessions/{worker_name}/{session_id}", response_model=SessionDescriptor)
@@ -134,6 +140,11 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         response.raise_for_status()
         body = response.json()
         body["ws_endpoint"] = build_public_ws_endpoint(cfg, worker.name, body["id"])
+        body.setdefault("browser", "camoufox")
+        if "vnc" not in body and "vnc_info" in body:
+            body["vnc"] = body.pop("vnc_info")
+        if "vnc_enabled" not in body and "vnc" in body:
+            body["vnc_enabled"] = bool(body["vnc"].get("http") or body["vnc"].get("ws"))
         return SessionDescriptor(worker=worker.name, **body)
 
     @app.delete("/sessions/{worker_name}/{session_id}")
@@ -199,10 +210,24 @@ async def gather_worker_status(workers: Iterable[WorkerConfig], cfg: ControlSett
                 response = await client.health()
                 response.raise_for_status()
                 detail = response.json()
-                statuses.append(WorkerStatus(name=worker.name, healthy=True, detail=detail))
+                statuses.append(
+                    WorkerStatus(
+                        name=worker.name,
+                        healthy=True,
+                        detail=detail,
+                        supports_vnc=worker.supports_vnc,
+                    )
+                )
             except httpx.HTTPError as exc:  # pragma: no cover
                 LOGGER.warning("Worker %s unhealthy: %s", worker.name, exc)
-                statuses.append(WorkerStatus(name=worker.name, healthy=False, detail={"error": str(exc)}))
+                statuses.append(
+                    WorkerStatus(
+                        name=worker.name,
+                        healthy=False,
+                        detail={"error": str(exc)},
+                        supports_vnc=worker.supports_vnc,
+                    )
+                )
     return statuses
 
 

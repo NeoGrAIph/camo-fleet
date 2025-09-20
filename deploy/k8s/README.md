@@ -1,8 +1,9 @@
 # Camofleet k3s deployment
 
-These manifests provide a minimal three-service deployment ready for a k3s cluster:
+These manifests provide a minimal deployment ready for a k3s cluster:
 
-- `worker` — FastAPI service running the Playwright worker with VNC enabled.
+- `worker` — API-под с sidecar runner'ом (Camoufox) в headless режиме.
+- `worker-vnc` — такая же пара контейнеров, но runner собран с VNC/noVNC.
 - `control-plane` — lightweight orchestrator that proxies API requests to workers.
 - `ui` — static React dashboard served by nginx.
 
@@ -10,9 +11,13 @@ These manifests provide a minimal three-service deployment ready for a k3s clust
 
 1. Build and push the container images. Replace the registry references in the manifests.
    ```sh
+   docker build -t REGISTRY/camofleet-runner:latest -f docker/Dockerfile.runner .
+   docker build -t REGISTRY/camofleet-runner-vnc:latest -f docker/Dockerfile.runner-vnc .
    docker build -t REGISTRY/camofleet-worker:latest -f docker/Dockerfile.worker .
    docker build -t REGISTRY/camofleet-control:latest -f docker/Dockerfile.control .
    docker build -t REGISTRY/camofleet-ui:latest -f docker/Dockerfile.ui .
+   docker push REGISTRY/camofleet-runner:latest
+   docker push REGISTRY/camofleet-runner-vnc:latest
    docker push REGISTRY/camofleet-worker:latest
    docker push REGISTRY/camofleet-control:latest
    docker push REGISTRY/camofleet-ui:latest
@@ -28,19 +33,17 @@ Update the image references inside `kustomization.yaml`, then apply:
 kubectl apply -k deploy/k8s
 ```
 
-This creates:
-
-- `Deployment` + `Service` for each component.
-- A `ConfigMap` with environment variables for the control-plane.
-- An `Ingress` exposing the UI and API over HTTPS (edit hostnames before applying).
-- A `Service` exposing the VNC WebSocket port (6900) as a ClusterIP.
+This creates deployments for headless и VNC воркеров (каждый — пара контейнеров worker+runner),
+контрольную плоскость, UI и Ingress. В сервисе `camofleet-worker-vnc` дополнительно открывается
+порт 6900 для noVNC.
 
 ## Environment variables
 
-### Worker
+### Worker + runner
 
-- `WORKER_VNC_WS_BASE` — base URL of the worker VNC WebSocket (e.g. `ws://worker:6900`).
-- `WORKER_VNC_HTTP_BASE` — base HTTP URL that the UI should use for the noVNC page.
+- `WORKER_RUNNER_BASE_URL` — адрес sidecar runner'а (по умолчанию `http://localhost:8070`).
+- `WORKER_SUPPORTS_VNC` — флаг, который сигнализирует control-plane, что воркер умеет в VNC.
+- `RUNNER_VNC_WS_BASE` / `RUNNER_VNC_HTTP_BASE` — задаются только для runner-vnc и используются UI.
 
 ### Control-plane
 
@@ -52,10 +55,16 @@ Example value:
 ```json
 [
   {
-    "name": "worker-0",
+    "name": "worker-headless",
     "url": "http://camofleet-worker:8080",
-    "vnc_ws": "ws://camofleet-worker:6900",
-    "vnc_http": "http://camofleet-worker:6900"
+    "supports_vnc": false
+  },
+  {
+    "name": "worker-vnc",
+    "url": "http://camofleet-worker-vnc:8080",
+    "supports_vnc": true,
+    "vnc_ws": "ws://camofleet-worker-vnc:6900",
+    "vnc_http": "http://camofleet-worker-vnc:6900"
   }
 ]
 ```

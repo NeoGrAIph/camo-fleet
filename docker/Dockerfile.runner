@@ -1,11 +1,11 @@
 FROM mcr.microsoft.com/playwright/python:v1.55.0-noble
 
+# Base system packages and locales
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       ffmpeg tzdata locales ca-certificates fontconfig \
       fonts-liberation fonts-dejavu-core fonts-dejavu-extra \
       fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji \
-      xvfb x11vnc websockify novnc procps \
     && rm -rf /var/lib/apt/lists/* \
     && fc-cache -f -v
 
@@ -26,6 +26,7 @@ WORKDIR /opt/app
 COPY runner /opt/app
 RUN pip install --no-cache-dir --break-system-packages -e .
 
+# Pre-fetch Camoufox resources under the pwuser cache
 RUN mkdir -p /data/artifacts /data/userdata /data/tmp /home/pwuser/.cache && \
     for attempt in 1 2 3; do \
       HOME=/home/pwuser XDG_CACHE_HOME=/home/pwuser/.cache python -m camoufox fetch && break || \
@@ -33,18 +34,10 @@ RUN mkdir -p /data/artifacts /data/userdata /data/tmp /home/pwuser/.cache && \
     done && \
     chown -R pwuser:pwuser /data /home/pwuser
 
-COPY docker/scripts/vnc-start.sh /usr/local/bin/vnc-start.sh
-COPY docker/scripts/runner-entrypoint.sh /usr/local/bin/runner-entrypoint.sh
-RUN chmod +x /usr/local/bin/vnc-start.sh /usr/local/bin/runner-entrypoint.sh
-
 USER pwuser
 ENV RUNNER_DATA=/data \
     XDG_CACHE_HOME=/home/pwuser/.cache \
-    RUNNER_PORT=8070 \
-    DISPLAY=":1" \
-    VNC_RES="1920x1080x24" \
-    VNC_PORT="5900" \
-    WS_PORT="6900"
+    RUNNER_PORT=8070
 
-EXPOSE 8070 5900 6900
-CMD ["/usr/local/bin/runner-entrypoint.sh"]
+EXPOSE 8070
+CMD ["python", "-m", "camoufox_runner"]

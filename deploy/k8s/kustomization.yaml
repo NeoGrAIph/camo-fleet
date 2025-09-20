@@ -5,6 +5,7 @@ namespace: camofleet
 resources:
   - namespace.yaml
   - worker.deployment.yaml
+  - worker-vnc.deployment.yaml
   - control.deployment.yaml
   - ui.deployment.yaml
   - ingress.yaml

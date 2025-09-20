@@ -1,20 +1,22 @@
 # Camo-fleet
 
-Минимальный набор сервисов для запуска headful Playwright сессий с live-просмотром через VNC.
-Репозиторий содержит три приложения и Kubernetes-манифесты для k3s кластера:
+Минимальный набор сервисов для запуска Camoufox/Firefox сессий с live-просмотром через VNC.
+Архитектура построена на sidecar-паттерне: воркер отвечает за API, а браузерный слой вынесен в отдельный
+runner-контейнер. Репозиторий содержит четыре приложения и Kubernetes-манифесты для k3s кластера:
 
-- **worker** — FastAPI сервис, поднимающий браузерные сессии и отдающий `wsEndpoint`. Внутри контейнера
-  включены Xvfb + x11vnc + websockify, так что live-экран доступен по WebSocket (noVNC).
+- **worker** — API-воркер, который проксирует запросы к локальному Camoufox runner'у и отдаёт `wsEndpoint`.
+- **runner** — сервис, запускающий Camoufox и управляющий Playwright server'ом; выпускается в двух вариантах
+  образов (headless и с VNC/noVNC).
 - **control-plane** — облегчённый оркестратор, проксирующий HTTP-запросы к воркерам и предоставляющий
   единый REST API для UI.
-- **ui** — React SPA с базовой панелью: список сессий, запуск новых и ссылки на WebSocket/VNC подключения.
+- **ui** — React SPA с панелью: список сессий, запуск новых и ссылки на WebSocket/VNC подключения.
 
 ## Возможности
 
-- Direct-сессии (`wsEndpoint`) для Chromium/Firefox/WebKit.
+- Direct-сессии (`wsEndpoint`) для Camoufox/Firefox (антидетект).
 - TTL и авто-завершение простаивающих сессий.
-- Простое round-robin распределение сессий между воркерами.
-- Live-экран через встроенный VNC/WebSocket слой (без отключения).
+- Простое round-robin распределение сессий между воркерами/runner'ами.
+- Live-экран через VNC/noVNC слой (включается флагом для воркеров с поддержкой VNC).
 - REST API без SSE/RBAC/Managed DSL — только базовые CRUD операции над сессиями.
 
 ## Структура
@@ -24,8 +26,9 @@ Camo-fleet/
 ├── control-plane/         # FastAPI control-plane
 ├── deploy/k8s/            # k3s-ready manifests
 ├── docker/                # Dockerfile'ы и entrypoint'ы
+├── runner/                # Camoufox runner sidecar
 ├── ui/                    # Vite + React SPA
-└── worker/                # FastAPI worker
+└── worker/                # API worker, проксирующий runner
 ```
 
 ## Локальный запуск
@@ -37,13 +40,14 @@ Camo-fleet/
    ```bash
    docker compose -f docker-compose.dev.yml up --build
    ```
-   Команда соберёт образы с `pip install -e .[dev]`, скачает Playwright браузеры и поднимет три контейнера
-   (worker, control-plane и Vite dev-сервер). Перезапуск контейнеров не требует установки Python или Node.js на хосте.
+   Будут собраны образы Camoufox runner'ов, воркеров, control-plane и UI. По умолчанию поднимаются два воркера:
+   headless и VNC (с собственными runner sidecar'ами). Дополнительных зависимостей на хосте не нужно.
 3. После запуска:
    - UI: `http://localhost:5173`
    - Control-plane API: `http://localhost:9000`
-   - Worker API: `http://localhost:8080`
-   - noVNC: `ws://localhost:6900` и `http://localhost:6900`
+   - Headless worker API: `http://localhost:8080`
+   - VNC worker API: `http://localhost:8081`
+   - noVNC: `http://localhost:6900` (`ws://localhost:6900`)
 4. Тесты также можно прогнать внутри контейнеров:
    ```bash
    docker compose -f docker-compose.dev.yml run --rm --entrypoint pytest worker
@@ -54,25 +58,31 @@ Camo-fleet/
 ### Нативный запуск (опционально)
 
 1. Установите Python 3.11+, Node.js 20+ и Docker.
-2. Установите Playwright браузеры:
+2. Соберите runner sidecar (Camoufox):
    ```bash
-   pip install -e worker/
-   python -m playwright install --with-deps
+   pip install -e runner/
+   python -m camoufox fetch
    ```
-3. Worker:
+3. Запустите runner:
+   ```bash
+   python -m camoufox_runner
+   ```
+   По умолчанию API доступен на `http://127.0.0.1:8070`.
+4. Worker:
    ```bash
    cd worker
    python -m camofleet_worker
    ```
-   По умолчанию API доступен на `http://127.0.0.1:8080`, а VNC websocket — на `ws://127.0.0.1:6900`.
-4. Control-plane:
+   По умолчанию API доступен на `http://127.0.0.1:8080`. Для работы с VNC необходим runner с поддержкой VNC
+   (запускаемый из образа `Dockerfile.runner-vnc`).
+5. Control-plane:
    ```bash
    cd control-plane
    python -m camofleet_control
    ```
    По умолчанию сервис слушает `http://127.0.0.1:9000`. Список воркеров задаётся переменной `CONTROL_WORKERS`
    (см. `control-plane/camofleet_control/config.py`).
-5. UI:
+6. UI:
    ```bash
    cd ui
    npm install
@@ -105,12 +115,15 @@ Camo-fleet/
 Сборка образов (замените `REGISTRY` на собственный реестр):
 
 ```bash
+docker build -t REGISTRY/camofleet-runner:latest -f docker/Dockerfile.runner .
+docker build -t REGISTRY/camofleet-runner-vnc:latest -f docker/Dockerfile.runner-vnc .
 docker build -t REGISTRY/camofleet-worker:latest -f docker/Dockerfile.worker .
 docker build -t REGISTRY/camofleet-control:latest -f docker/Dockerfile.control .
 docker build -t REGISTRY/camofleet-ui:latest -f docker/Dockerfile.ui .
 ```
 
-Worker-образ содержит VNC и запускает `python -m camofleet_worker`, одновременно стартуя noVNC слой.
+Runner-образы содержат Camoufox + Playwright server: headless (`Dockerfile.runner`) и с VNC (`Dockerfile.runner-vnc`).
+Worker-образ запускает только API (`python -m camofleet_worker`) и проксирует запросы в соседний runner.
 UI-образ собирается в статический билд и обслуживается nginx с проксированием `/api` на control-plane.
 
 ## Kubernetes (k3s)
@@ -131,15 +144,15 @@ kubectl apply -k deploy/k8s
 | Переменная              | Значение по умолчанию | Описание                                   |
 | ----------------------- | --------------------- | ------------------------------------------ |
 | `WORKER_PORT`           | `8080`                | Порт HTTP API.                             |
-| `WORKER_SESSION_DEFAULTS__HEADLESS` | `false` | Запускать браузеры в headless режиме.      |
-| `WORKER_VNC_WS_BASE`    | `null`                | Базовый URL для WebSocket (прописывается в Kubernetes). |
-| `WORKER_VNC_HTTP_BASE`  | `null`                | Базовый HTTP URL для noVNC (для UI).       |
+| `WORKER_SESSION_DEFAULTS__HEADLESS` | `false` | Значение по умолчанию для headless.        |
+| `WORKER_RUNNER_BASE_URL`| `http://127.0.0.1:8070` | Адрес sidecar runner'а внутри Pod/Compose. |
+| `WORKER_SUPPORTS_VNC`   | `false`               | Помечает воркер как умеющий работать с VNC. |
 
 ### Control-plane
 
 | Переменная         | Значение по умолчанию | Описание                                         |
 | ------------------ | --------------------- | ------------------------------------------------ |
-| `CONTROL_WORKERS`  | см. config            | JSON-массив с воркерами: `name`, `url`, `vnc_ws`, `vnc_http`. |
+| `CONTROL_WORKERS`  | см. config            | JSON-массив с воркерами: `name`, `url`, `supports_vnc`, `vnc_ws`, `vnc_http`. |
 | `CONTROL_PORT`     | `9000`                | Порт HTTP API.                                   |
 
 UI не требует переменных окружения — все настройки кодируются в nginx.

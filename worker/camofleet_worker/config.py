@@ -13,7 +13,6 @@ class SessionDefaults(BaseModel):
     """Default session parameters loaded from configuration."""
 
     idle_ttl_seconds: Annotated[int, Field(ge=30, le=3600)] = 300
-    browser: Annotated[str, Field(pattern=r"^(chromium|firefox|webkit)$")] = "chromium"
     headless: bool = False
 
 
@@ -31,9 +30,8 @@ class WorkerSettings(BaseSettings):
     session_defaults: SessionDefaults = Field(default_factory=SessionDefaults)
     cleanup_interval: Annotated[int, Field(gt=0, le=3600)] = 15
 
-    vnc_ws_base: str | None = None
-    vnc_http_base: str | None = None
-    ws_endpoint_base: str | None = None
+    runner_base_url: str = "http://127.0.0.1:8070"
+    supports_vnc: bool = False
 
 
 @lru_cache

@@ -2,6 +2,7 @@ export interface WorkerStatus {
   name: string;
   healthy: boolean;
   detail: Record<string, unknown>;
+  supports_vnc: boolean;
 }
 
 export interface SessionItem {
@@ -10,11 +11,11 @@ export interface SessionItem {
   status: string;
   created_at: string;
   last_seen_at: string;
-  browser: string;
   headless: boolean;
   idle_ttl_seconds: number;
   labels: Record<string, string>;
   ws_endpoint: string;
+  vnc_enabled: boolean;
   vnc: {
     ws?: string | null;
     http?: string | null;
@@ -46,12 +47,26 @@ export function fetchSessions(): Promise<SessionItem[]> {
 
 export function createSession(payload: {
   worker?: string;
-  browser?: string;
   headless?: boolean;
   idle_ttl_seconds?: number;
+  start_url?: string;
+  labels?: Record<string, string>;
+  vnc?: boolean;
 }): Promise<SessionItem> {
   return request<SessionItem>('/sessions', {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+}
+
+export function deleteSession(worker: string, id: string): Promise<{ id: string; status: string }> {
+  return request<{ id: string; status: string }>(`/sessions/${worker}/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export function touchSession(worker: string, id: string): Promise<SessionItem> {
+  return request<SessionItem>(`/sessions/${worker}/${id}/touch`, {
+    method: 'POST',
   });
 }
