@@ -6,7 +6,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 
 WORKDIR /opt/app
 COPY control-plane /opt/app
-RUN pip install --no-cache-dir .
+
+ARG INSTALL_MODE=release
+RUN if [ "$INSTALL_MODE" = "dev" ]; then \
+      pip install --no-cache-dir -e .[dev]; \
+    else \
+      pip install --no-cache-dir .; \
+    fi
 
 EXPOSE 9000
 CMD ["python", "-m", "camofleet_control"]
