@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
+import os
+import tempfile
 import time
 import uuid
+from asyncio import subprocess as aio_subprocess
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -18,6 +22,8 @@ from .config import WorkerSettings
 from .models import SessionDetail, SessionStatus, SessionSummary
 
 LOGGER = logging.getLogger(__name__)
+
+BROWSER_SERVER_LAUNCH_TIMEOUT = 30
 
 
 @dataclass(slots=True)
@@ -109,9 +115,10 @@ class SessionManager:
         idle_ttl = payload.get("idle_ttl_seconds") or self._settings.session_defaults.idle_ttl_seconds
         labels = payload.get("labels") or {}
 
-        browser_factory = getattr(self._playwright, browser_name)
+        # Validate requested browser exists before launching the server via the CLI.
+        getattr(self._playwright, browser_name)
         LOGGER.info("Launching %s session headless=%s", browser_name, headless)
-        server = await browser_factory.launch_server(headless=headless)
+        server = await self._launch_browser_server(browser_name, headless=headless)
         created_at = datetime.now(tz=timezone.utc)
         handle = SessionHandle(
             id=str(uuid.uuid4()),
@@ -189,6 +196,124 @@ class SessionManager:
             "http": f"{base_http.rstrip('/')}/{suffix}" if base_http else None,
             "password_protected": False,
         }
+
+    async def _launch_browser_server(self, browser_name: str, *, headless: bool) -> "_SubprocessBrowserServer":
+        try:
+            from playwright._impl._driver import compute_driver_executable
+        except ImportError as exc:  # pragma: no cover - defensive, depends on Playwright internals
+            raise RuntimeError("Playwright driver executable could not be located") from exc
+
+        config_path: str | None = None
+        config = {"headless": headless}
+        config_path = await asyncio.to_thread(_write_launch_config, config)
+        node_path, cli_path = compute_driver_executable()
+
+        process = await aio_subprocess.create_subprocess_exec(
+            node_path,
+            cli_path,
+            "launch-server",
+            f"--browser={browser_name}",
+            f"--config={config_path}",
+            stdout=aio_subprocess.PIPE,
+            stderr=aio_subprocess.PIPE,
+        )
+
+        try:
+            try:
+                raw_endpoint = await asyncio.wait_for(process.stdout.readline(), timeout=BROWSER_SERVER_LAUNCH_TIMEOUT)
+            except asyncio.TimeoutError as exc:
+                await _terminate_process(process)
+                raise RuntimeError(f"Timed out launching Playwright {browser_name} server") from exc
+
+            if not raw_endpoint:
+                stderr_output = await process.stderr.read()
+                return_code = await process.wait()
+                message = stderr_output.decode().strip() or "unknown error"
+                raise RuntimeError(
+                    f"Failed to launch Playwright {browser_name} server (code {return_code}): {message}"
+                )
+
+            ws_endpoint = raw_endpoint.decode().strip()
+            stdout_task = asyncio.create_task(
+                _drain_stream(process.stdout, f"{browser_name}-stdout"),
+                name=f"{browser_name}-server-stdout",
+            )
+            stderr_task = asyncio.create_task(
+                _drain_stream(process.stderr, f"{browser_name}-stderr"),
+                name=f"{browser_name}-server-stderr",
+            )
+            return _SubprocessBrowserServer(process, ws_endpoint, [stdout_task, stderr_task])
+        except Exception:
+            await _terminate_process(process, kill=True)
+            raise
+        finally:
+            if config_path:
+                await asyncio.to_thread(_remove_file, config_path)
+
+
+class _SubprocessBrowserServer:
+    def __init__(
+        self,
+        process: aio_subprocess.Process,
+        ws_endpoint: str,
+        drain_tasks: list[asyncio.Task[None]],
+    ) -> None:
+        self._process = process
+        self.ws_endpoint = ws_endpoint
+        self._drain_tasks = drain_tasks
+
+    async def close(self) -> None:
+        if self._process.returncode is None:
+            self._process.terminate()
+            try:
+                await asyncio.wait_for(self._process.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                self._process.kill()
+                await self._process.wait()
+
+        for task in self._drain_tasks:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+
+async def _drain_stream(stream: asyncio.StreamReader | None, prefix: str) -> None:
+    if stream is None:  # pragma: no cover - defensive
+        return
+    while True:
+        line = await stream.readline()
+        if not line:
+            break
+        LOGGER.debug("%s: %s", prefix, line.decode().rstrip())
+
+
+def _write_launch_config(options: Dict[str, Any]) -> str:
+    with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as fh:
+        json.dump(options, fh)
+        fh.write("\n")
+        return fh.name
+
+
+def _remove_file(path: str) -> None:
+    try:
+        os.remove(path)
+    except FileNotFoundError:  # pragma: no cover - best effort cleanup
+        return
+
+
+async def _terminate_process(process: aio_subprocess.Process, *, kill: bool = False) -> None:
+    if process.returncode is not None:
+        return
+    if not kill:
+        process.terminate()
+        try:
+            await asyncio.wait_for(process.wait(), timeout=5)
+            return
+        except asyncio.TimeoutError:
+            LOGGER.warning("Browser server did not exit after terminate; killing")
+    process.kill()
+    with contextlib.suppress(asyncio.TimeoutError):
+        await asyncio.wait_for(process.wait(), timeout=5)
 
 
 __all__ = ["SessionManager", "SessionHandle"]

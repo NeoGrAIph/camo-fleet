@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import Depends, FastAPI, HTTPException, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from playwright.async_api import async_playwright
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
@@ -49,7 +49,14 @@ def get_settings() -> WorkerSettings:
     return load_settings()
 
 
-def get_manager(state: AppState = Depends(lambda: app_state)) -> SessionManager:
+def get_app_state(request: Request) -> AppState:
+    state = getattr(request.app.state, "app_state", None)
+    if not isinstance(state, AppState):
+        raise HTTPException(status_code=500, detail="Worker state is unavailable")
+    return state
+
+
+def get_manager(state: AppState = Depends(get_app_state)) -> SessionManager:
     if not state.manager:
         raise HTTPException(status_code=503, detail="Worker is still initialising")
     return state.manager
@@ -66,7 +73,9 @@ def create_app(settings: WorkerSettings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
-    state = AppState(settings or load_settings())
+    resolved_settings = settings or load_settings()
+    state = AppState(resolved_settings)
+    fastapi_app.state.app_state = state
 
     @fastapi_app.on_event("startup")
     async def _startup() -> None:
@@ -126,7 +135,7 @@ def create_app(settings: WorkerSettings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Session not found")
         return handle.detail(manager.vnc_payload_for(handle))
 
-    @fastapi_app.get(settings.metrics_endpoint)
+    @fastapi_app.get(resolved_settings.metrics_endpoint)
     async def metrics() -> Response:
         data = generate_latest(state.registry)
         return Response(content=data, media_type=CONTENT_TYPE_LATEST)
@@ -134,8 +143,7 @@ def create_app(settings: WorkerSettings | None = None) -> FastAPI:
     return fastapi_app
 
 
-app_state = AppState(load_settings())
-app = create_app(app_state.settings)
+app = create_app()
 
 
 __all__ = ["create_app", "app"]
