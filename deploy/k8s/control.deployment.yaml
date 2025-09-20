@@ -6,6 +6,7 @@ metadata:
     app: camofleet-control
 data:
   CONTROL_WORKERS: '[{"name":"worker-0","url":"http://camofleet-worker:8080","vnc_ws":"ws://camofleet-worker:6900","vnc_http":"http://camofleet-worker:6900"}]'
+  CONTROL_PUBLIC_API_PREFIX: /api
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -31,6 +32,11 @@ spec:
                 configMapKeyRef:
                   name: camofleet-control-config
                   key: CONTROL_WORKERS
+            - name: CONTROL_PUBLIC_API_PREFIX
+              valueFrom:
+                configMapKeyRef:
+                  name: camofleet-control-config
+                  key: CONTROL_PUBLIC_API_PREFIX
           ports:
             - containerPort: 9000
               name: http

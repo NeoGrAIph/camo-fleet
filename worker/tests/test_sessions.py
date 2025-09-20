@@ -75,3 +75,29 @@ async def test_session_expires(manager: SessionManager) -> None:
     await asyncio.sleep(1.1)
     await manager._cleanup_expired()
     assert await manager.get(detail.id) is None
+
+
+@pytest.mark.asyncio()
+async def test_ws_endpoint_base_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = WorkerSettings(
+        session_defaults=SessionDefaults(idle_ttl_seconds=30, browser="chromium", headless=True),
+        cleanup_interval=1,
+        ws_endpoint_base="ws://public.example",
+    )
+    playwright = DummyPlaywright()
+
+    async def fake_launch(self: SessionManager, browser_name: str, *, headless: bool) -> DummyServer:
+        factory = getattr(self._playwright, browser_name)
+        return await factory.launch(headless=headless)
+
+    monkeypatch.setattr(SessionManager, "_launch_browser_server", fake_launch)
+
+    mgr = SessionManager(settings, playwright)
+    await mgr.start()
+    try:
+        handle = await mgr.create({})
+        assert mgr.ws_endpoint_for(handle).startswith("ws://public.example")
+        detail = handle.detail(mgr.vnc_payload_for(handle), mgr.ws_endpoint_for(handle))
+        assert detail.ws_endpoint.startswith("ws://public.example")
+    finally:
+        await mgr.close()

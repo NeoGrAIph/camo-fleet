@@ -33,6 +33,7 @@ class WorkerSettings(BaseSettings):
 
     vnc_ws_base: str | None = None
     vnc_http_base: str | None = None
+    ws_endpoint_base: str | None = None
 
 
 @lru_cache

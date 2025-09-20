@@ -54,10 +54,10 @@ class SessionHandle:
             worker_id=self.worker_id,
         )
 
-    def detail(self, vnc_info: dict[str, Any]) -> SessionDetail:
+    def detail(self, vnc_info: dict[str, Any], ws_endpoint: str) -> SessionDetail:
         return SessionDetail(
             **self.summary().model_dump(),
-            ws_endpoint=self.server.ws_endpoint,
+            ws_endpoint=ws_endpoint,
             vnc=vnc_info,
         )
 
@@ -101,7 +101,13 @@ class SessionManager:
     async def list_details(self) -> list[SessionDetail]:
         async with self._lock:
             handles = list(self._sessions.values())
-        return [handle.detail(self._build_vnc_payload(handle)) for handle in handles]
+        return [
+            handle.detail(
+                self._build_vnc_payload(handle),
+                self.ws_endpoint_for(handle),
+            )
+            for handle in handles
+        ]
 
     async def get(self, session_id: str) -> SessionHandle | None:
         async with self._lock:
@@ -182,18 +188,35 @@ class SessionManager:
         async with self._lock:
             handles = list(self._sessions.values())
         for handle in handles:
-            yield handle.detail(self._build_vnc_payload(handle))
+            yield handle.detail(
+                self._build_vnc_payload(handle),
+                self.ws_endpoint_for(handle),
+            )
 
     def vnc_payload_for(self, handle: SessionHandle) -> dict[str, Any]:
         return self._build_vnc_payload(handle)
 
+    def ws_endpoint_for(self, handle: SessionHandle) -> str:
+        base = self._settings.ws_endpoint_base
+        path = f"/sessions/{handle.id}/ws"
+        if not base:
+            return path
+        return f"{base.rstrip('/')}{path}"
+
     def _build_vnc_payload(self, handle: SessionHandle) -> dict[str, Any]:
         base_ws = self._settings.vnc_ws_base
         base_http = self._settings.vnc_http_base
-        suffix = f"{handle.worker_id}/{handle.id}"
+        if base_ws:
+            ws_url = f"{base_ws.rstrip('/')}/websockify"
+        else:
+            ws_url = None
+        if base_http:
+            http_url = f"{base_http.rstrip('/')}/vnc.html?path=websockify"
+        else:
+            http_url = None
         return {
-            "ws": f"{base_ws.rstrip('/')}/{suffix}" if base_ws else None,
-            "http": f"{base_http.rstrip('/')}/{suffix}" if base_http else None,
+            "ws": ws_url,
+            "http": http_url,
             "password_protected": False,
         }
 

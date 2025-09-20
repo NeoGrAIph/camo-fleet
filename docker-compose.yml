@@ -18,6 +18,7 @@ services:
       dockerfile: docker/Dockerfile.control
     environment:
       CONTROL_WORKERS: '[{"name":"local","url":"http://worker:8080","vnc_ws":"ws://localhost:6900","vnc_http":"http://localhost:6900"}]'
+      CONTROL_PUBLIC_API_PREFIX: /api
     depends_on:
       - worker
     ports:
@@ -31,4 +32,3 @@ services:
       - control-plane
     ports:
       - '8080:80'
-

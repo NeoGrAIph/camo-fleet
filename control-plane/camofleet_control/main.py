@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 from typing import Iterable
+from urllib.parse import urlparse, urlunparse
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
+import websockets
+from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 
 from .config import ControlSettings, WorkerConfig, load_settings
 from .models import (
@@ -85,6 +90,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                     LOGGER.warning("Failed to query worker %s: %s", worker.name, exc)
                     continue
                 for item in response.json():
+                    public_ws_endpoint = build_public_ws_endpoint(cfg, worker.name, item["id"])
                     results.append(
                         SessionDescriptor(
                             worker=worker.name,
@@ -96,7 +102,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                             headless=item["headless"],
                             idle_ttl_seconds=item["idle_ttl_seconds"],
                             labels=item.get("labels", {}),
-                            ws_endpoint=item["ws_endpoint"],
+                            ws_endpoint=public_ws_endpoint,
                             vnc=item.get("vnc", {}),
                         )
                     )
@@ -115,6 +121,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         if response.status_code >= 400:
             raise HTTPException(status_code=response.status_code, detail=response.text)
         body = response.json()
+        body["ws_endpoint"] = build_public_ws_endpoint(cfg, worker.name, body["id"])
         return CreateSessionResponse(worker=worker.name, **body)
 
     @app.get("/sessions/{worker_name}/{session_id}", response_model=SessionDescriptor)
@@ -126,6 +133,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Session not found")
         response.raise_for_status()
         body = response.json()
+        body["ws_endpoint"] = build_public_ws_endpoint(cfg, worker.name, body["id"])
         return SessionDescriptor(worker=worker.name, **body)
 
     @app.delete("/sessions/{worker_name}/{session_id}")
@@ -137,6 +145,48 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Session not found")
         response.raise_for_status()
         return response.json()
+
+    @app.websocket("/sessions/{worker_name}/{session_id}/ws")
+    async def session_websocket(
+        websocket: WebSocket,
+        worker_name: str,
+        session_id: str,
+        state: AppState = Depends(get_state),
+    ) -> None:
+        worker = state.pick_worker(worker_name)
+        upstream_endpoint = build_worker_ws_endpoint(worker, session_id)
+        await websocket.accept()
+        try:
+            async with websockets.connect(
+                upstream_endpoint,
+                ping_interval=None,
+                open_timeout=cfg.request_timeout,
+            ) as upstream:
+                client_to_upstream = asyncio.create_task(
+                    _forward_client_to_upstream(websocket, upstream),
+                    name="control-bridge-client->worker",
+                )
+                upstream_to_client = asyncio.create_task(
+                    _forward_upstream_to_client(websocket, upstream),
+                    name="control-bridge-worker->client",
+                )
+                done, pending = await asyncio.wait(
+                    {client_to_upstream, upstream_to_client},
+                    return_when=asyncio.FIRST_EXCEPTION,
+                )
+                for task in pending:
+                    task.cancel()
+                for task in done:
+                    exc = task.exception()
+                    if exc:
+                        raise exc
+        except (ConnectionClosedError, ConnectionClosedOK, WebSocketDisconnect):
+            with contextlib.suppress(RuntimeError):
+                await websocket.close()
+        except Exception as exc:  # pragma: no cover - defensive logging path
+            LOGGER.warning("WebSocket proxy failure for worker %s: %s", worker.name, exc)
+            with contextlib.suppress(RuntimeError):
+                await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
 
     return app
 
@@ -154,6 +204,56 @@ async def gather_worker_status(workers: Iterable[WorkerConfig], cfg: ControlSett
                 LOGGER.warning("Worker %s unhealthy: %s", worker.name, exc)
                 statuses.append(WorkerStatus(name=worker.name, healthy=False, detail={"error": str(exc)}))
     return statuses
+
+
+def build_public_ws_endpoint(settings: ControlSettings, worker_name: str, session_id: str) -> str:
+    prefix = normalise_public_prefix(settings.public_api_prefix)
+    return f"{prefix}/sessions/{worker_name}/{session_id}/ws"
+
+
+def build_worker_ws_endpoint(worker: WorkerConfig, session_id: str) -> str:
+    parsed = urlparse(worker.url)
+    scheme = "wss" if parsed.scheme == "https" else "ws"
+    base = parsed._replace(scheme=scheme, path="", params="", query="", fragment="")
+    base_url = urlunparse(base).rstrip("/")
+    return f"{base_url}/sessions/{session_id}/ws"
+
+
+def normalise_public_prefix(prefix: str) -> str:
+    value = (prefix or "").strip()
+    if not value or value == "/":
+        return ""
+    if not value.startswith("/"):
+        value = f"/{value}"
+    return value.rstrip("/")
+
+
+async def _forward_client_to_upstream(websocket: WebSocket, upstream: websockets.WebSocketClientProtocol) -> None:
+    try:
+        while True:
+            message = await websocket.receive()
+            message_type = message.get("type")
+            if message_type == "websocket.disconnect":
+                await upstream.close()
+                break
+            if "text" in message and message["text"] is not None:
+                await upstream.send(message["text"])
+            elif "bytes" in message and message["bytes"] is not None:
+                await upstream.send(message["bytes"])
+    except WebSocketDisconnect:
+        await upstream.close()
+
+
+async def _forward_upstream_to_client(websocket: WebSocket, upstream: websockets.WebSocketClientProtocol) -> None:
+    try:
+        async for data in upstream:
+            if isinstance(data, (bytes, bytearray)):
+                await websocket.send_bytes(data)
+            else:
+                await websocket.send_text(data)
+    finally:
+        with contextlib.suppress(RuntimeError):
+            await websocket.close()
 
 
 __all__ = ["create_app"]

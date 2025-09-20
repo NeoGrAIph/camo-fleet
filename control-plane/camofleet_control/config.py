@@ -31,6 +31,7 @@ class ControlSettings(BaseSettings):
         ]
     )
     request_timeout: float = 10.0
+    public_api_prefix: str = "/"
 
 
 @lru_cache
