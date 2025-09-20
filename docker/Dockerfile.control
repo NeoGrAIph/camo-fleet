@@ -4,6 +4,10 @@ ENV PYTHONUNBUFFERED=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+
+RUN pip install --no-cache-dir --upgrade pip
+
 WORKDIR /opt/app
 COPY control-plane /opt/app
 

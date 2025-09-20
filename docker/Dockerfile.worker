@@ -3,16 +3,24 @@ FROM mcr.microsoft.com/playwright/python:v1.55.0-noble
 USER root
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      ffmpeg locales ca-certificates fontconfig \
+      ffmpeg tzdata locales ca-certificates fontconfig \
       fonts-liberation fonts-dejavu-core fonts-dejavu-extra \
       fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji \
       xvfb x11vnc websockify novnc \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && fc-cache -f -v
 
 RUN sed -i 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
+    sed -i 's/# ru_RU.UTF-8 UTF-8/ru_RU.UTF-8 UTF-8/' /etc/locale.gen && \
+    sed -i 's/# fi_FI.UTF-8 UTF-8/fi_FI.UTF-8 UTF-8/' /etc/locale.gen && \
     locale-gen
 ENV LANG=en_US.UTF-8 \
-    LC_ALL=en_US.UTF-8
+    LC_ALL=en_US.UTF-8 \
+    TZ=Europe/Helsinki
+
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+
+RUN pip install --no-cache-dir --upgrade pip
 
 COPY docker/scripts/vnc-start.sh /usr/local/bin/vnc-start.sh
 COPY docker/scripts/worker-entrypoint.sh /usr/local/bin/worker-entrypoint.sh
