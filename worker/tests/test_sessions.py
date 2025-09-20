@@ -1,0 +1,70 @@
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime, timezone
+from typing import Any
+
+import pytest
+import pytest_asyncio
+
+from camofleet_worker.config import SessionDefaults, WorkerSettings
+from camofleet_worker.sessions import SessionManager
+
+
+class DummyBrowserFactory:
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.calls: list[dict[str, Any]] = []
+
+    async def launch_server(self, headless: bool) -> "DummyServer":
+        self.calls.append({"headless": headless})
+        return DummyServer(self.name)
+
+
+class DummyPlaywright:
+    def __init__(self) -> None:
+        self.chromium = DummyBrowserFactory("chromium")
+        self.firefox = DummyBrowserFactory("firefox")
+        self.webkit = DummyBrowserFactory("webkit")
+
+
+class DummyServer:
+    def __init__(self, browser_name: str) -> None:
+        self.browser_name = browser_name
+        self.ws_endpoint = f"ws://{browser_name}/endpoint"
+        self.closed = False
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+@pytest_asyncio.fixture()
+async def manager() -> SessionManager:
+    settings = WorkerSettings(
+        session_defaults=SessionDefaults(idle_ttl_seconds=30, browser="chromium", headless=True),
+        cleanup_interval=1,
+    )
+    playwright = DummyPlaywright()
+    mgr = SessionManager(settings, playwright)
+    await mgr.start()
+    yield mgr
+    await mgr.close()
+
+
+@pytest.mark.asyncio()
+async def test_create_session_uses_defaults(manager: SessionManager) -> None:
+    detail = await manager.create({})
+    assert detail.browser_name == "chromium"
+    assert manager._playwright.chromium.calls[0]["headless"] is True
+
+
+@pytest.mark.asyncio()
+async def test_session_expires(manager: SessionManager) -> None:
+    detail = await manager.create({})
+    handle = await manager.get(detail.id)
+    assert handle is not None
+    handle.last_seen_at = datetime.now(tz=timezone.utc).replace(microsecond=0)
+    handle.idle_ttl_seconds = 1
+    await asyncio.sleep(1.1)
+    await manager._cleanup_expired()
+    assert await manager.get(detail.id) is None

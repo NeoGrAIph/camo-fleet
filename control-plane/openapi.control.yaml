@@ -1,579 +1,176 @@
 openapi: 3.0.3
 info:
-  title: Runner Control-plane API
+  title: Camofleet Control API
   version: 0.1.0
-  description: |
-    Control-plane агрегирует состояние воркеров, управляет жизненным циклом сессий,
-    раздаёт live-обновления через SSE, проксирует логи и артефакты, выдаёт (опц.) VNC-туннель.
-    Этот API — «единая точка входа» для UI и интеграций. Доступ извне защищён (JWT/OIDC, RBAC).
-
 servers:
-  - url: https://control.example.com
-    description: Prod (пример)
-  - url: http://localhost:8081
-    description: Local dev
-
-tags:
-  - name: Status
-  - name: Events
-  - name: Sessions
-  - name: Logs
-  - name: Artifacts
-  - name: VNC
-
+  - url: http://localhost:9000
 paths:
-  /status:
+  /health:
     get:
-      tags: [Status]
-      operationId: getStatus
-      summary: Aggregated status (totals + shallow sessions)
-      description: |
-        Возвращает сводные метрики пула и «укороченный» список активных сессий.
-        Источник — реестр (registry), который периодически синхронизируется с воркерами.
+      summary: Aggregated health
       responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StatusSnapshot"
-
-  /events:
-    get:
-      tags: [Events]
-      operationId: getEvents
-      summary: Server-Sent Events (live updates)
-      description: |
-        Live-канал для UI. Типы событий:
-        - `snapshot` — полная стартовая фотография (после подключения).
-        - `session_created` / `session_updated` / `session_deleted`.
-        - `metrics_update` — агрегаты (total/used/queued/pending).
-        - `queue_update` — изменения очередей/квот.
-        Рекомендуется поддержать `Last-Event-ID` и heartbeat (`event: ping`) каждые 15–30с.
-      responses:
-        "200":
-          description: SSE stream
-          headers:
-            Cache-Control:
-              schema: { type: string, example: "no-cache" }
-          content:
-            text/event-stream:
-              schema:
-                type: string
-                example: |
-                  event: snapshot
-                  data: {"total":50,"used":7,"queued":1,"pending":0,"engines":{...}}
-
-                  event: session_updated
-                  data: {"id":"sess_abc123","status":"BUSY","lastActivity":"2025-09-20T09:43:05Z"}
-
-  /sessions:
-    get:
-      tags: [Sessions]
-      operationId: listSessions
-      summary: List sessions (aggregated)
-      description: |
-        Список сессий по данным реестра (объединяет все воркеры).
-        Для подробностей используйте `/sessions/{id}`.
-      parameters:
-        - in: query
-          name: status
-          schema: { type: string, enum: [INIT, BOOTING, READY, BUSY, IDLE, TERMINATING, DEAD] }
-        - in: query
-          name: engine
-          schema: { type: string, example: camoufox-firefox }
-        - in: query
-          name: version
-          schema: { type: string, example: "135.0" }
-        - in: query
-          name: owner
-          schema: { type: string, example: user@company }
-        - in: query
-          name: label
-          description: Фильтр по ярлыкам, формат key=value (можно передавать несколько раз)
-          schema: { type: string, example: manual=true }
-        - in: query
-          name: limit
-          schema: { type: integer, default: 100, minimum: 1, maximum: 1000 }
-        - in: query
-          name: cursor
-          schema: { type: string }
-      responses:
-        "200":
-          description: List
+        '200':
+          description: Status of all workers
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  items:
+                  status:
+                    type: string
+                  workers:
                     type: array
-                    items: { $ref: "#/components/schemas/SessionSummary" }
-                  nextCursor: { type: string, nullable: true }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-
+                    items:
+                      $ref: '#/components/schemas/WorkerStatus'
+  /workers:
+    get:
+      summary: Worker statuses
+      responses:
+        '200':
+          description: List of workers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkerStatus'
+  /sessions:
+    get:
+      summary: List sessions across workers
+      responses:
+        '200':
+          description: Combined session list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SessionDescriptor'
     post:
-      tags: [Sessions]
-      operationId: createSession
-      summary: Manual run (schedule/create on a worker)
-      description: |
-        Создаёт сессию через планировщик/оркестратор control-plane.
-        Control-plane сам выбирает воркер (или принимает placement-подсказки) и пробрасывает
-        запрос на Worker API. В ответ возвращается унифицированная структура.
+      summary: Create session
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SessionCreateRequest"
-            examples:
-              managed-eu:
-                summary: Managed, EU-pool, manual=true
-                value:
-                  placement:
-                    region: EU
-                    engine: camoufox-firefox
-                    pool: pool-eu-1
-                  mode: managed
-                  fingerprint:
-                    mode: auto
-                    geoip: true
-                    locale: ["fi-FI","en-US"]
-                  recording: { har: true, har_mode: full, video: true }
-                  idle_ttl_sec: 600
-                  labels: { manual: "true", team: "secqa" }
-              direct-simple:
-                summary: Direct, без явного placement (пусть решит планировщик)
-                value:
-                  mode: direct
-                  fingerprint: { mode: auto, geoip: true }
-                  recording: { har: true, video: true }
+              $ref: '#/components/schemas/CreateSessionRequest'
       responses:
-        "201":
-          description: Created (scheduled and started on some worker)
-          headers:
-            X-Session-Id:
-              schema: { type: string }
+        '201':
+          description: Session created
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/SessionCreateResponse" }
-        "400":
-          description: Bad request (валидация входных параметров Control-plane)
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "409":
-          description: No capacity / conflicting constraints / quota exceeded
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-        "422":
-          description: Validation error (схема spec не пройдена)
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ValidationError" }
-        "429":
-          description: Rate limit / control-plane overloaded
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-        "500": { $ref: "#/components/responses/InternalError" }
-
-  /sessions/{id}:
+              schema:
+                $ref: '#/components/schemas/SessionDescriptor'
+  /sessions/{worker}/{id}:
     get:
-      tags: [Sessions]
-      operationId: getSession
-      summary: Get session details (union view)
-      description: |
-        Возвращает объединённый вид: сведения из реестра + (при необходимости) делегирование на воркер.
-        Может содержать presigned-ссылки на артефакты.
+      summary: Session detail
       parameters:
+        - in: path
+          name: worker
+          required: true
+          schema:
+            type: string
         - in: path
           name: id
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
-        "200":
-          description: Details
+        '200':
+          description: Session detail
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/SessionDetail" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
-
+              schema:
+                $ref: '#/components/schemas/SessionDescriptor'
+        '404':
+          description: Session not found
     delete:
-      tags: [Sessions]
-      operationId: deleteSession
-      summary: Kill session (routes to owning worker)
-      description: |
-        Проксирует на «владельца» (worker) и инициирует graceful termination.
-        Возвращает 202 сразу после приёма команды.
+      summary: Terminate session
       parameters:
+        - in: path
+          name: worker
+          required: true
+          schema:
+            type: string
         - in: path
           name: id
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
-        "202":
-          description: Accepted (termination started)
+        '200':
+          description: Delete confirmation
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  id: { type: string }
-                  status: { type: string, example: TERMINATING }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
-
-  /sessions/{id}/artifacts:
-    get:
-      tags: [Artifacts]
-      operationId: getArtifacts
-      summary: List artifact URLs (proxied/presigned)
-      description: |
-        Возвращает индекс артефактов с presigned-URL (обычно S3/MinIO).
-        Control-plane может сам генерировать ссылки либо проксировать ответ воркера.
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: Artifact index
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ArtifactIndex" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
-
-  /sessions/{id}/logs:
-    get:
-      tags: [Logs]
-      operationId: getLogs
-      summary: Logs stream or snapshot (fan-out)
-      description: |
-        Проксирует логи конкретной сессии. Поддерживает snapshot (JSON) и stream (SSE).
-        По возможности Control-plane кэширует «хвост» логов для быстрых открытий.
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
-        - in: query
-          name: stream
-          schema: { type: boolean, default: false }
-        - in: query
-          name: tail
-          schema: { type: integer, minimum: 1, maximum: 10000 }
-      responses:
-        "200":
-          description: Logs
-          content:
-            text/event-stream:
-              schema: { type: string, example: "event: log\ndata: {\"ts\":\"...\",\"level\":\"INFO\",\"source\":\"console\",\"message\":\"...\"}\n\n" }
-            application/json:
-              schema:
-                type: object
-                properties:
-                  lines:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/LogLine"
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
-
-  /vnc/{id}:
-    get:
-      tags: [VNC]
-      operationId: getVnc
-      summary: WebSocket (noVNC) tunnel (optional)
-      description: |
-        Upgrade до WebSocket'а. Используйте одноразовый токен (?token=...).
-        Control-plane маршрутизирует соединение на нужный воркер/порт.
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
-        - in: query
-          name: token
-          required: true
-          schema: { type: string }
-      responses:
-        "101":
-          description: Switching Protocols (WebSocket)
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-
+                  id:
+                    type: string
+                  status:
+                    type: string
+        '404':
+          description: Session not found
 components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-
-  responses:
-    Unauthorized:
-      description: Unauthorized
-      content:
-        application/json:
-          schema: { $ref: "#/components/schemas/Error" }
-    Forbidden:
-      description: Forbidden
-      content:
-        application/json:
-          schema: { $ref: "#/components/schemas/Error" }
-    NotFound:
-      description: Not found
-      content:
-        application/json:
-          schema: { $ref: "#/components/schemas/Error" }
-    InternalError:
-      description: Internal server error
-      content:
-        application/json:
-          schema: { $ref: "#/components/schemas/Error" }
-
   schemas:
-    # ---------- Status & summaries ----------
-    StatusSnapshot:
+    WorkerStatus:
       type: object
       properties:
-        total: { type: integer, example: 50 }
-        used: { type: integer, example: 7 }
-        queued: { type: integer, example: 1 }
-        pending: { type: integer, example: 0 }
-        engines:
-          type: object
-          additionalProperties:
-            type: object
-            properties:
-              versions:
-                type: object
-                additionalProperties:
-                  type: object
-                  properties:
-                    count: { type: integer }
-              sessions:
-                type: array
-                items: { $ref: "#/components/schemas/SessionSummary" }
-
-    SessionSummary:
-      type: object
-      properties:
-        id: { type: string }
-        engine: { type: string, example: camoufox-firefox }
-        version: { type: string, example: "135.0" }
-        mode: { type: string, enum: [direct, managed] }
-        status: { type: string, enum: [INIT, BOOTING, READY, BUSY, IDLE, TERMINATING, DEAD] }
-        startedAt: { type: string, format: date-time }
-        lastActivity: { type: string, format: date-time, nullable: true }
-        ttlSec: { type: integer }
-        labels:
-          type: object
-          additionalProperties: { type: string }
-        vnc: { type: boolean, default: false }
-
-    SessionDetail:
-      allOf:
-        - $ref: "#/components/schemas/SessionSummary"
-        - type: object
-          properties:
-            region: { type: string, nullable: true }
-            proxyHint: { type: string, nullable: true }
-            wsEndpoint: { type: string, nullable: true }
-            artifacts: { $ref: "#/components/schemas/ArtifactIndex" }
-            fingerprintDumpAvailable: { type: boolean }
-
-    # ---------- Creation spec ----------
-    SessionCreateRequest:
-      allOf:
-        - $ref: "#/components/schemas/WorkerPlacement"
-        - $ref: "#/components/schemas/RunnerSessionSpec"
-
-    WorkerPlacement:
-      type: object
-      description: Подсказки планировщику. Все поля — опциональны.
-      properties:
-        region: { type: string, example: EU }
-        engine: { type: string, example: camoufox-firefox }
-        pool: { type: string, example: pool-eu-1 }
-        affinity:
-          type: object
-          additionalProperties: { type: string }
-          description: Свободная форма для правил (team, purpose и т.д.)
-
-    RunnerSessionSpec:
-      type: object
-      properties:
-        mode: { type: string, enum: [direct, managed], default: managed }
-        proxy: { $ref: "#/components/schemas/ProxyConfig" }
-        fingerprint: { $ref: "#/components/schemas/FingerprintConfig" }
-        cookies:
-          type: array
-          items: { $ref: "#/components/schemas/Cookie" }
-        recording: { $ref: "#/components/schemas/RecordingConfig" }
-        context_defaults: { $ref: "#/components/schemas/ContextDefaults" }
-        idle_ttl_sec: { type: integer, default: 120, minimum: 10, maximum: 86400 }
-        labels:
-          type: object
-          additionalProperties: { type: string }
-        return_fingerprint_dump: { type: boolean, default: false }
-
-    SessionCreateResponse:
-      type: object
-      properties:
-        session_id: { type: string }
-        state: { type: string, example: READY }
-        wsEndpoint: { type: string, nullable: true, description: "Для direct" }
-        actions_endpoint: { type: string, nullable: true, description: "Для managed" }
-        vncUrl: { type: string, nullable: true }
-        expires_at: { type: string, format: date-time }
-
-    # ---------- Artifacts & logs ----------
-    ArtifactIndex:
-      type: object
-      properties:
-        har: { type: string, format: uri, nullable: true }
-        video: { type: string, format: uri, nullable: true }
-        screens:
-          type: array
-          items: { type: string, format: uri }
-
-    LogLine:
-      type: object
-      properties:
-        ts: { type: string, format: date-time }
-        level: { type: string, example: INFO }
-        source: { type: string, example: console }
-        message: { type: string }
-
-    # ---------- Shared with Worker spec (скопировано для независимости) ----------
-    ProxyConfig:
-      type: object
-      required: [server]
-      properties:
-        server: { type: string, example: http://user:pass@proxy:3128 }
-        username: { type: string, nullable: true }
-        password: { type: string, nullable: true }
-
-    Cookie:
-      type: object
-      required: [name, value, domain, path]
-      properties:
-        name: { type: string }
-        value: { type: string }
-        domain: { type: string }
-        path: { type: string, default: "/" }
-        expires: { type: integer, nullable: true }
-        httpOnly: { type: boolean, default: false }
-        secure: { type: boolean, default: true }
-        sameSite: { type: string, enum: [Lax, Strict, None], default: Lax }
-
-    RecordingConfig:
-      type: object
-      properties:
-        har: { type: boolean, default: true }
-        har_mode: { type: string, enum: [full, minimal], default: full }
-        video: { type: boolean, default: true }
-
-    ContextDefaults:
-      type: object
-      properties:
-        permissions:
-          type: array
-          items: { type: string }
-        geolocation:
-          type: object
-          properties:
-            latitude: { type: number }
-            longitude: { type: number }
-            accuracy: { type: number }
-        timezoneId: { type: string }
-        locale: { type: string }
-        ignoreHTTPSErrors: { type: boolean, default: false }
-        httpCredentials:
-          type: object
-          properties:
-            username: { type: string }
-            password: { type: string }
-        offline: { type: boolean, default: false }
-
-    FingerprintConfig:
-      type: object
-      properties:
-        mode: { type: string, enum: [auto, manual, hybrid], default: auto }
-        constraints:
-          type: object
-          properties:
-            os: { type: string, enum: [windows, macos, linux] }
-            region: { type: string }
-            screen_max:
-              type: array
-              items: { type: integer }
-              minItems: 2
-              maxItems: 2
-            webgl_vendor_pref:
-              type: array
-              items: { type: string }
-            webgl_renderer_pref:
-              type: array
-              items: { type: string }
-        overrides:
+        name:
+          type: string
+        healthy:
+          type: boolean
+        detail:
           type: object
           additionalProperties: true
-        seed: { type: integer, nullable: true }
-        geoip: { type: boolean, default: true }
-        locale:
-          type: array
-          items: { type: string }
-        toggles:
-          type: object
-          properties:
-            block_webrtc: { type: boolean, default: false }
-            block_webgl: { type: boolean, default: false }
-            disable_coop: { type: boolean, default: true }
-        pdfViewerEnabled: { type: boolean, default: true }
-        fonts:
-          type: array
-          items: { type: string }
-        screen:
-          type: object
-          properties:
-            max_width: { type: integer }
-            max_height: { type: integer }
-        webgl_config:
-          type: array
-          items: { type: string }
-          minItems: 1
-
-    # ---------- Errors ----------
-    Error:
+      required: [name, healthy, detail]
+    SessionDescriptor:
       type: object
       properties:
-        code: { type: string, example: SCHEDULER_NO_CAPACITY }
-        message: { type: string }
-        details: { type: object }
-
-    ValidationError:
+        worker:
+          type: string
+        id:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        browser:
+          type: string
+        headless:
+          type: boolean
+        idle_ttl_seconds:
+          type: integer
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        ws_endpoint:
+          type: string
+        vnc:
+          type: object
+          additionalProperties: true
+      required: [worker, id, status, created_at, last_seen_at, browser, headless, idle_ttl_seconds, labels, ws_endpoint, vnc]
+    CreateSessionRequest:
       type: object
       properties:
-        message: { type: string, example: "Validation failed" }
-        errors:
-          type: array
-          items:
-            type: object
-            properties:
-              loc:
-                type: array
-                items: { type: string }
-              msg: { type: string }
-              type: { type: string }
-
-security:
-  - bearerAuth: []
+        worker:
+          type: string
+        browser:
+          type: string
+          enum: [chromium, firefox, webkit]
+        headless:
+          type: boolean
+        idle_ttl_seconds:
+          type: integer
+          minimum: 30
+          maximum: 3600
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+      additionalProperties: false
