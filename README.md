@@ -30,43 +30,55 @@ Camo-fleet/
 
 ## Локальный запуск
 
-### Подготовка окружения
+### Полностью в Docker (без Python на хосте)
 
-1. Установите Python 3.11+, Node.js 20+, Docker.
-2. Установите Playwright браузеры (для локального дев-сервера):
+1. Установите [Docker](https://docs.docker.com/get-docker/) и Docker Compose.
+2. Запустите локальное окружение с дев-зависимостями:
+   ```bash
+   docker compose -f docker-compose.dev.yml up --build
+   ```
+   Команда соберёт образы с `pip install -e .[dev]`, скачает Playwright браузеры и поднимет три контейнера
+   (worker, control-plane и Vite dev-сервер). Перезапуск контейнеров не требует установки Python или Node.js на хосте.
+3. После запуска:
+   - UI: `http://localhost:5173`
+   - Control-plane API: `http://localhost:9000`
+   - Worker API: `http://localhost:8080`
+   - noVNC: `ws://localhost:6900` и `http://localhost:6900`
+4. Тесты также можно прогнать внутри контейнеров:
+   ```bash
+   docker compose -f docker-compose.dev.yml run --rm --entrypoint pytest worker
+   docker compose -f docker-compose.dev.yml run --rm --entrypoint pytest control-plane
+   ```
+   При необходимости дополнительные команды можно выполнять через `docker compose run --rm --entrypoint bash <service>`.
+
+### Нативный запуск (опционально)
+
+1. Установите Python 3.11+, Node.js 20+ и Docker.
+2. Установите Playwright браузеры:
    ```bash
    pip install -e worker/
    python -m playwright install --with-deps
    ```
-
-### Worker
-
-```bash
-cd worker
-python -m camofleet_worker
-```
-
-По умолчанию API доступен на `http://127.0.0.1:8080`, а VNC websocket — на `ws://127.0.0.1:6900`.
-
-### Control-plane
-
-```bash
-cd control-plane
-python -m camofleet_control
-```
-
-По умолчанию сервис слушает `http://127.0.0.1:9000`. Список воркеров задаётся переменной `CONTROL_WORKERS`
-(см. `control-plane/camofleet_control/config.py`).
-
-### UI
-
-```bash
-cd ui
-npm install
-npm run dev
-```
-
-Vite-прокси направит `/api` запросы на control-plane (`http://127.0.0.1:9000`).
+3. Worker:
+   ```bash
+   cd worker
+   python -m camofleet_worker
+   ```
+   По умолчанию API доступен на `http://127.0.0.1:8080`, а VNC websocket — на `ws://127.0.0.1:6900`.
+4. Control-plane:
+   ```bash
+   cd control-plane
+   python -m camofleet_control
+   ```
+   По умолчанию сервис слушает `http://127.0.0.1:9000`. Список воркеров задаётся переменной `CONTROL_WORKERS`
+   (см. `control-plane/camofleet_control/config.py`).
+5. UI:
+   ```bash
+   cd ui
+   npm install
+   npm run dev
+   ```
+   Для проксирования API можно переопределить `VITE_API_ORIGIN` (по умолчанию `http://localhost:9000`).
 
 ## Docker Desktop (Windows)
 
@@ -137,7 +149,14 @@ UI не требует переменных окружения — все нас
 - `worker`: `pytest` — проверяет менеджер сессий и auto-cleanup.
 - `control-plane`: `pytest` — покрытие round-robin логики.
 
-Запуск из корня:
+Рекомендуемый (контейнерный) запуск:
+
+```bash
+docker compose -f docker-compose.dev.yml run --rm --entrypoint pytest worker
+docker compose -f docker-compose.dev.yml run --rm --entrypoint pytest control-plane
+```
+
+Нативно:
 
 ```bash
 cd worker && pip install -e .[dev] && pytest
