@@ -77,6 +77,16 @@
 * JSON Viewer (foldable) для fingerprint\_dump/логов событий.
 * noVNC виджет (опционально, как lazy‑подключаемый компонент).
 
+### 5.1 Структура текущих React-компонентов
+
+* `src/App.tsx` отвечает за загрузку данных, хранит общее состояние и собирает layout.
+* `src/components/WorkerList.tsx` — список воркеров и их состояние.
+* `src/components/LaunchSessionForm.tsx` — форма ручного запуска сессии (получает только необходимые пропсы).
+* `src/components/SessionTable.tsx` — таблица активных сессий с выбором текущей строки.
+* `src/components/SessionDetails.tsx` и `SessionControls.tsx` — панель инспектора и управляющие действия.
+* Вспомогательные функции форматирования времени/TTL вынесены в `src/utils/time.ts`, а логика сессий — в `src/utils/session.ts`.
+* Компонентные тесты расположены в `src/components/__tests__` и покрывают форму запуска и таблицу сессий.
+
 ## 6. API интеграция
 
 ### 6.1 SSE `/events`
