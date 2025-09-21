@@ -201,8 +201,8 @@ cd control-plane && pip install -e .[dev] && pytest
 
 - `GET /health` — состояние сервиса.
 - `GET /sessions` — список активных сессий.
-- `POST /sessions` — создание новой сессии (поддерживает поля `start_url` и `start_url_wait`; для значений `domcontentloaded` и `load` раннер откроет URL асинхронно, при `none` страница не будет загружена автоматически — например, VNC покажет пустой профиль, пока вы не перейдёте на адрес вручную).
-- `GET /sessions/{id}` — детали, включая VNC ссылки и режим ожидания `start_url_wait`.
+- `POST /sessions` — создание новой сессии. Поддерживает `vnc=true` для запроса VNC-предпросмотра, `start_url` и `start_url_wait` (при значениях `domcontentloaded` / `load` раннер откроет URL асинхронно, при `none` страница не будет загружена автоматически — например, VNC покажет пустой профиль, пока вы не перейдёте на адрес вручную).
+- `GET /sessions/{id}` — детали, включая VNC ссылки, флаг `vnc_enabled` и режим ожидания `start_url_wait`.
 - `POST /sessions/{id}/touch` — продлить TTL.
 - `DELETE /sessions/{id}` — завершение.
 
@@ -210,7 +210,7 @@ cd control-plane && pip install -e .[dev] && pytest
 
 - `GET /workers` — статусы всех воркеров.
 - `GET /sessions` — агрегированный список.
-- `POST /sessions` — создать сессию на выбранном воркере или через round-robin (прокидывает `start_url_wait` дальше к воркерам и runner'у).
+- `POST /sessions` — создать сессию на выбранном воркере или через round-robin (прокидывает `vnc`, `start_url` и `start_url_wait` дальше к воркерам и runner'у).
 - `GET /sessions/{worker}/{id}` — детали.
 - `DELETE /sessions/{worker}/{id}` — завершение.
 

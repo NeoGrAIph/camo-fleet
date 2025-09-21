@@ -109,19 +109,30 @@ components:
     SessionCreateRequest:
       type: object
       properties:
-        browser:
-          type: string
-          enum: [chromium, firefox, webkit]
         headless:
           type: boolean
         idle_ttl_seconds:
           type: integer
           minimum: 30
           maximum: 3600
+        start_url:
+          type: string
+          maxLength: 1024
+          description: Optional URL to open once the session is ready.
+        start_url_wait:
+          type: string
+          description: |
+            Controls navigation to the optional `start_url`: `none`
+            (skip navigation), `domcontentloaded`, `load`.
+          enum: [none, domcontentloaded, load]
         labels:
           type: object
           additionalProperties:
             type: string
+        vnc:
+          type: boolean
+          default: false
+          description: Request a session with an attached VNC preview.
       additionalProperties: false
     SessionDetail:
       type: object
@@ -148,6 +159,9 @@ components:
             type: string
         worker_id:
           type: string
+        vnc_enabled:
+          type: boolean
+          description: Whether a VNC preview is available for this session.
         ws_endpoint:
           type: string
         vnc:
@@ -161,7 +175,11 @@ components:
               nullable: true
             password_protected:
               type: boolean
-      required: [id, status, created_at, last_seen_at, browser, headless, idle_ttl_seconds, labels, worker_id, ws_endpoint, vnc]
+        start_url_wait:
+          type: string
+          description: Runner start URL wait mode.
+          enum: [none, domcontentloaded, load]
+      required: [id, status, created_at, last_seen_at, browser, headless, idle_ttl_seconds, labels, worker_id, vnc_enabled, ws_endpoint, vnc, start_url_wait]
     SessionDeleteResponse:
       type: object
       properties:
