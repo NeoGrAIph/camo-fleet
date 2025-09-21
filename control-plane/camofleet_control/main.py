@@ -7,6 +7,7 @@ import contextlib
 import logging
 from collections.abc import Awaitable, Callable
 from time import perf_counter
+from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 import httpx
@@ -163,10 +164,11 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                     continue
                 for item in response.json():
                     public_ws_endpoint = build_public_ws_endpoint(cfg, worker.name, item["id"])
-                    vnc_payload = item.get("vnc", item.get("vnc_info", {}))
+                    vnc_payload = item.get("vnc", item.get("vnc_info", {})) or {}
                     vnc_enabled = item.get("vnc_enabled")
                     if vnc_enabled is None and vnc_payload:
                         vnc_enabled = bool(vnc_payload.get("http") or vnc_payload.get("ws"))
+                    vnc_payload = apply_vnc_overrides(worker, vnc_payload)
                     results.append(
                         SessionDescriptor(
                             worker=worker.name,
@@ -205,6 +207,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             body["vnc"] = body.pop("vnc_info")
         if "vnc_enabled" not in body and "vnc" in body:
             body["vnc_enabled"] = bool(body["vnc"].get("http") or body["vnc"].get("ws"))
+        vnc_payload = body.get("vnc")
+        if isinstance(vnc_payload, dict):
+            body["vnc"] = apply_vnc_overrides(worker, vnc_payload)
         return CreateSessionResponse(worker=worker.name, **body)
 
     @app.get("/sessions/{worker_name}/{session_id}", response_model=SessionDescriptor)
@@ -222,6 +227,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             body["vnc"] = body.pop("vnc_info")
         if "vnc_enabled" not in body and "vnc" in body:
             body["vnc_enabled"] = bool(body["vnc"].get("http") or body["vnc"].get("ws"))
+        vnc_payload = body.get("vnc")
+        if isinstance(vnc_payload, dict):
+            body["vnc"] = apply_vnc_overrides(worker, vnc_payload)
         return SessionDescriptor(worker=worker.name, **body)
 
     @app.delete("/sessions/{worker_name}/{session_id}")
@@ -253,6 +261,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             body["vnc"] = body.pop("vnc_info")
         if "vnc_enabled" not in body and "vnc" in body:
             body["vnc_enabled"] = bool(body["vnc"].get("http") or body["vnc"].get("ws"))
+        vnc_payload = body.get("vnc")
+        if isinstance(vnc_payload, dict):
+            body["vnc"] = apply_vnc_overrides(worker, vnc_payload)
         return SessionDescriptor(worker=worker.name, **body)
 
     @app.get(cfg.metrics_endpoint)
@@ -354,6 +365,31 @@ def build_worker_ws_endpoint(worker: WorkerConfig, session_id: str) -> str:
         path = f"/sessions/{session_id}/ws"
     base = parsed._replace(scheme=scheme, path=path, params="", query="", fragment="")
     return urlunparse(base)
+
+
+def apply_vnc_overrides(worker: WorkerConfig, payload: dict[str, Any]) -> dict[str, Any]:
+    if not payload:
+        return payload
+
+    mutated = dict(payload)
+    for key, override_url in (("ws", worker.vnc_ws), ("http", worker.vnc_http)):
+        original_url = payload.get(key)
+        if not original_url or not override_url:
+            continue
+        try:
+            parsed_original = urlparse(original_url)
+            parsed_override = urlparse(override_url)
+        except ValueError:
+            continue
+        if not parsed_override.scheme or not parsed_override.netloc:
+            continue
+        replaced = parsed_original._replace(
+            scheme=parsed_override.scheme,
+            netloc=parsed_override.netloc,
+        )
+        mutated[key] = urlunparse(replaced)
+
+    return mutated
 
 
 def normalise_public_prefix(prefix: str) -> str:

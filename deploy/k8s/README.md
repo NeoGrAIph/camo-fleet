@@ -34,9 +34,10 @@ kubectl apply -k deploy/k8s
 ```
 
 This creates deployments for headless и VNC воркеров (каждый — пара контейнеров worker+runner),
-контрольную плоскость, UI и Ingress. Для noVNC runner поднимает отдельный порт на каждую сессию
-(по умолчанию диапазон 6900–6999), поэтому для внешнего доступа потребуется проксировать диапазон
-портов либо задействовать hostNetwork.
+контрольную плоскость, UI и Ingress. В `worker-vnc` диапазон переменных `RUNNER_VNC_PORT_*` и
+`RUNNER_VNC_WS_PORT_*` зафиксирован на `5900` и `6900`, поэтому одновременно доступна только одна
+VNC-сессия. Для внешнего доступа настройте TCP-проксирование этих портов (Ingress TCP/WS маршрут
+или NodePort/LoadBalancer). `6900` нужен для noVNC/websockify, `5900` — для прямого VNC-клиента.
 
 ## Environment variables
 
