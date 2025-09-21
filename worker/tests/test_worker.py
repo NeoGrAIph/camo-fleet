@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import asyncio
-from typing import Any, Dict, List
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,13 +14,13 @@ class StubRunner:
         self.created: list[dict[str, Any]] = []
         self.sessions: dict[str, dict[str, Any]] = {}
 
-    async def health(self) -> dict:
+    async def health(self) -> dict[str, Any]:
         return {"status": "ok", "checks": {"runner": "ok"}}
 
-    async def list_sessions(self) -> List[dict[str, Any]]:
+    async def list_sessions(self) -> list[dict[str, Any]]:
         return list(self.sessions.values())
 
-    async def create_session(self, payload: dict) -> dict[str, Any]:
+    async def create_session(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.created.append(payload)
         data = {
             "id": "sess-1",
@@ -55,7 +54,7 @@ class StubRunner:
 
 
 @pytest.fixture()
-def stub_app(monkeypatch: pytest.MonkeyPatch) -> TestClient:
+def stub_app() -> TestClient:
     settings = WorkerSettings(runner_base_url="http://runner", supports_vnc=False)
     app = create_app(settings)
     state = app.state.app_state
@@ -83,6 +82,35 @@ def test_create_and_list_session(stub_app: TestClient) -> None:
     items = list_resp.json()
     assert len(items) == 1
     assert items[0]["id"] == "sess-1"
+    assert stub_app.runner_stub.created[0]["start_url"] == "https://example.org"
 
-*** End Patch
-PATCH
+
+def test_get_session_returns_detail(stub_app: TestClient) -> None:
+    stub_app.post("/sessions", json={"start_url": "https://example.org"})
+
+    response = stub_app.get("/sessions/sess-1")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == "sess-1"
+    assert body["worker_id"]
+
+
+def test_touch_session_updates_last_seen(stub_app: TestClient) -> None:
+    stub_app.post("/sessions", json={"start_url": "https://example.org"})
+
+    response = stub_app.post("/sessions/sess-1/touch")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["last_seen_at"] == "2024-01-01T00:05:00Z"
+
+
+def test_delete_session_removes_from_store(stub_app: TestClient) -> None:
+    stub_app.post("/sessions", json={"start_url": "https://example.org"})
+
+    response = stub_app.delete("/sessions/sess-1")
+    assert response.status_code == 200
+    assert response.json()["status"] == "DEAD"
+
+    list_resp = stub_app.get("/sessions")
+    assert list_resp.status_code == 200
+    assert list_resp.json() == []
