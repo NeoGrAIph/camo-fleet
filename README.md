@@ -171,6 +171,7 @@ cp .env.example .env
 
 | Переменная | Значение по умолчанию | Описание |
 | ---------- | --------------------- | -------- |
+| `RUNNER_CORS_ORIGINS` | `['*']` | Список origin'ов (JSON-массив или через запятую) для CORS. Используйте конкретные домены в production; значение `*` автоматически отключает `allow_credentials`. |
 | `RUNNER_VNC_WS_BASE` | `None` | Базовый адрес (со схемой и хостом) для генерации WebSocket URL предпросмотра. Порт будет подменён на выделенный для конкретной сессии. |
 | `RUNNER_VNC_HTTP_BASE` | `None` | Аналогично `RUNNER_VNC_WS_BASE`, но для noVNC iframe (`/vnc.html`). |
 | `RUNNER_VNC_DISPLAY_MIN` / `RUNNER_VNC_DISPLAY_MAX` | `100` / `199` | Диапазон виртуальных `DISPLAY`, выделяемых Xvfb. |
@@ -190,6 +191,7 @@ cp .env.example .env
 
 | Переменная              | Значение по умолчанию | Описание                                   |
 | ----------------------- | --------------------- | ------------------------------------------ |
+| `WORKER_CORS_ORIGINS`   | `['*']`                | Список origin'ов для CORS (JSON/CSV). При `*` `allow_credentials` отключается; в production задайте конкретные хосты UI/API. |
 | `WORKER_PORT`           | `8080`                | Порт HTTP API.                             |
 | `WORKER_SESSION_DEFAULTS__HEADLESS` | `false` | Значение по умолчанию для headless.        |
 | `WORKER_RUNNER_BASE_URL`| `http://127.0.0.1:8070` | Адрес sidecar runner'а внутри Pod/Compose. |
@@ -199,6 +201,7 @@ cp .env.example .env
 
 | Переменная         | Значение по умолчанию | Описание                                         |
 | ------------------ | --------------------- | ------------------------------------------------ |
+| `CONTROL_CORS_ORIGINS` | `['*']`              | Origin'ы, которым разрешён доступ к API. При `*` `allow_credentials` отключается; для production перечислите конкретные домены. |
 | `CONTROL_WORKERS`  | см. config            | JSON-массив с воркерами: `name`, `url`, `supports_vnc`, `vnc_ws`, `vnc_http`. |
 | `CONTROL_PORT`     | `9000`                | Порт HTTP API.                                   |
 
