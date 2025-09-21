@@ -24,6 +24,14 @@ spec:
               value: ws://camofleet-worker-vnc:6900
             - name: RUNNER_VNC_HTTP_BASE
               value: http://camofleet-worker-vnc:6900
+            - name: RUNNER_VNC_PORT_MIN
+              value: "5900"
+            - name: RUNNER_VNC_PORT_MAX
+              value: "5900"
+            - name: RUNNER_VNC_WS_PORT_MIN
+              value: "6900"
+            - name: RUNNER_VNC_WS_PORT_MAX
+              value: "6900"
           ports:
             - containerPort: 8070
               name: runner-http
@@ -63,3 +71,6 @@ spec:
     - port: 6900
       targetPort: vnc-ws
       name: vnc-ws
+    - port: 5900
+      targetPort: vnc-raw
+      name: vnc-raw
