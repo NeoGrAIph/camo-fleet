@@ -9,6 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from playwright.async_api import async_playwright
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
 
+from shared import __version__
+
 from .config import RunnerSettings, load_settings
 from .models import (
     HealthResponse,
@@ -58,7 +60,7 @@ def get_app_state(app: FastAPI) -> AppState:
 
 def create_app(settings: RunnerSettings | None = None) -> FastAPI:
     cfg = settings or load_settings()
-    app = FastAPI(title="Camoufox Runner", version="0.1.0")
+    app = FastAPI(title="Camoufox Runner", version=__version__)
     allow_origins = cfg.cors_origins or ["*"]
     allow_all_origins = "*" in allow_origins
     cors_allow_origins = ["*"] if allow_all_origins else allow_origins
