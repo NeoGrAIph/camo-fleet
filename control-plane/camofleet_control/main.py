@@ -5,12 +5,29 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from typing import Iterable
+from collections.abc import Awaitable, Callable
+from time import perf_counter
 from urllib.parse import urlparse, urlunparse
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    CollectorRegistry,
+    Counter,
+    Gauge,
+    Histogram,
+    generate_latest,
+)
 import websockets
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 
@@ -30,6 +47,31 @@ class AppState:
     def __init__(self, settings: ControlSettings) -> None:
         self.settings = settings
         self._rr_index = 0
+        self.registry = CollectorRegistry()
+        self.proxy_success_total = Counter(
+            "control_plane_proxy_success_total",
+            "Count of successful proxy requests to workers.",
+            ("worker", "operation"),
+            registry=self.registry,
+        )
+        self.proxy_error_total = Counter(
+            "control_plane_proxy_error_total",
+            "Count of failed proxy requests to workers.",
+            ("worker", "operation"),
+            registry=self.registry,
+        )
+        self.proxy_request_duration = Histogram(
+            "control_plane_proxy_request_duration_seconds",
+            "Time spent proxying HTTP requests to workers.",
+            ("worker", "operation"),
+            registry=self.registry,
+        )
+        self.active_websockets = Gauge(
+            "control_plane_active_websockets",
+            "Number of active WebSocket proxy connections.",
+            ("worker",),
+            registry=self.registry,
+        )
 
     def list_workers(self) -> list[WorkerConfig]:
         return list(self.settings.workers)
@@ -46,6 +88,33 @@ class AppState:
         worker = workers[self._rr_index % len(workers)]
         self._rr_index += 1
         return worker
+
+    async def proxy_request(
+        self,
+        worker: WorkerConfig,
+        operation: str,
+        func: Callable[..., Awaitable[httpx.Response]],
+        *args,
+        **kwargs,
+    ) -> httpx.Response:
+        """Execute a worker request while recording metrics."""
+
+        labels = {"worker": worker.name, "operation": operation}
+        start = perf_counter()
+        try:
+            response = await func(*args, **kwargs)
+        except Exception:
+            duration = perf_counter() - start
+            self.proxy_error_total.labels(**labels).inc()
+            self.proxy_request_duration.labels(**labels).observe(duration)
+            raise
+        duration = perf_counter() - start
+        if response.status_code < 400:
+            self.proxy_success_total.labels(**labels).inc()
+        else:
+            self.proxy_error_total.labels(**labels).inc()
+        self.proxy_request_duration.labels(**labels).observe(duration)
+        return response
 
 
 def get_settings() -> ControlSettings:
@@ -73,13 +142,13 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
 
     @app.get("/health")
     async def health(state: AppState = Depends(get_state)) -> dict:
-        worker_statuses = await gather_worker_status(state.list_workers(), cfg)
+        worker_statuses = await gather_worker_status(state)
         healthy = all(item.healthy for item in worker_statuses) if worker_statuses else False
         return {"status": "ok" if healthy else "degraded", "workers": [s.model_dump() for s in worker_statuses]}
 
     @app.get("/workers", response_model=list[WorkerStatus])
     async def list_workers_endpoint(state: AppState = Depends(get_state)) -> list[WorkerStatus]:
-        return await gather_worker_status(state.list_workers(), cfg)
+        return await gather_worker_status(state)
 
     @app.get("/sessions", response_model=list[SessionDescriptor])
     async def list_sessions(state: AppState = Depends(get_state)) -> list[SessionDescriptor]:
@@ -87,7 +156,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         for worker in state.list_workers():
             async with worker_client(worker, cfg) as client:
                 try:
-                    response = await client.list_sessions()
+                    response = await state.proxy_request(worker, "list_sessions", client.list_sessions)
                     response.raise_for_status()
                 except httpx.HTTPError as exc:  # pragma: no cover - network failure
                     LOGGER.warning("Failed to query worker %s: %s", worker.name, exc)
@@ -126,7 +195,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         payload = request.model_dump(exclude_unset=True)
         payload.pop("worker", None)
         async with worker_client(worker, cfg) as client:
-            response = await client.create_session(payload)
+            response = await state.proxy_request(worker, "create_session", client.create_session, payload)
         if response.status_code >= 400:
             raise HTTPException(status_code=response.status_code, detail=response.text)
         body = response.json()
@@ -142,7 +211,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     async def get_session(worker_name: str, session_id: str, state: AppState = Depends(get_state)) -> SessionDescriptor:
         worker = state.pick_worker(worker_name)
         async with worker_client(worker, cfg) as client:
-            response = await client.get_session(session_id)
+            response = await state.proxy_request(worker, "get_session", client.get_session, session_id)
         if response.status_code == 404:
             raise HTTPException(status_code=404, detail="Session not found")
         response.raise_for_status()
@@ -159,7 +228,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     async def delete_session(worker_name: str, session_id: str, state: AppState = Depends(get_state)) -> dict:
         worker = state.pick_worker(worker_name)
         async with worker_client(worker, cfg) as client:
-            response = await client.delete_session(session_id)
+            response = await state.proxy_request(worker, "delete_session", client.delete_session, session_id)
         if response.status_code == 404:
             raise HTTPException(status_code=404, detail="Session not found")
         response.raise_for_status()
@@ -173,7 +242,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     ) -> SessionDescriptor:
         worker = state.pick_worker(worker_name)
         async with worker_client(worker, cfg) as client:
-            response = await client.touch_session(session_id)
+            response = await state.proxy_request(worker, "touch_session", client.touch_session, session_id)
         if response.status_code == 404:
             raise HTTPException(status_code=404, detail="Session not found")
         response.raise_for_status()
@@ -186,6 +255,11 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             body["vnc_enabled"] = bool(body["vnc"].get("http") or body["vnc"].get("ws"))
         return SessionDescriptor(worker=worker.name, **body)
 
+    @app.get(cfg.metrics_endpoint)
+    async def metrics(state: AppState = Depends(get_state)) -> Response:
+        data = generate_latest(state.registry)
+        return Response(content=data, media_type=CONTENT_TYPE_LATEST)
+
     @app.websocket("/sessions/{worker_name}/{session_id}/ws")
     async def session_websocket(
         websocket: WebSocket,
@@ -196,6 +270,8 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         worker = state.pick_worker(worker_name)
         upstream_endpoint = build_worker_ws_endpoint(worker, session_id)
         await websocket.accept()
+        websocket_labels = {"worker": worker.name}
+        state.active_websockets.labels(**websocket_labels).inc()
         try:
             async with websockets.connect(
                 upstream_endpoint,
@@ -227,17 +303,19 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             LOGGER.warning("WebSocket proxy failure for worker %s: %s", worker.name, exc)
             with contextlib.suppress(RuntimeError):
                 await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
+        finally:
+            state.active_websockets.labels(**websocket_labels).dec()
 
     return app
 
 
-async def gather_worker_status(workers: Iterable[WorkerConfig], cfg: ControlSettings) -> list[WorkerStatus]:
-    worker_list = list(workers)
+async def gather_worker_status(state: AppState) -> list[WorkerStatus]:
+    worker_list = list(state.list_workers())
 
     async def _fetch_status(worker: WorkerConfig) -> WorkerStatus:
-        async with worker_client(worker, cfg) as client:
+        async with worker_client(worker, state.settings) as client:
             try:
-                response = await client.health()
+                response = await state.proxy_request(worker, "health", client.health)
                 response.raise_for_status()
                 detail = response.json()
                 return WorkerStatus(

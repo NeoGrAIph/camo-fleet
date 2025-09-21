@@ -51,6 +51,9 @@ This creates deployments for headless и VNC воркеров (каждый — 
 The control-plane reads workers from `CONTROL_WORKERS`, a JSON array of worker objects. The
 manifest sets this automatically using the `CONTROL_WORKERS` environment variable.
 
+Prometheus metrics are exposed on the path specified by `CONTROL_METRICS_ENDPOINT` (defaults to
+`/metrics`). Configure your scraper to target the same Service/port.
+
 Example value:
 
 ```json

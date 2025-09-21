@@ -38,6 +38,7 @@ class ControlSettings(BaseSettings):
     )
     request_timeout: float = 10.0
     public_api_prefix: str = "/"
+    metrics_endpoint: str = "/metrics"
 
 
 @lru_cache
