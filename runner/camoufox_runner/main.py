@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import Depends, FastAPI, HTTPException, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from playwright.async_api import async_playwright
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
@@ -47,6 +47,15 @@ def get_settings() -> RunnerSettings:
     return load_settings()
 
 
+def get_app_state(app: FastAPI) -> AppState:
+    """Return the runner application state."""
+
+    state = getattr(app.state, "app_state", None)
+    if not isinstance(state, AppState):  # pragma: no cover - defensive branch
+        raise RuntimeError("Runner app state is not initialised")
+    return state
+
+
 def create_app(settings: RunnerSettings | None = None) -> FastAPI:
     cfg = settings or load_settings()
     app = FastAPI(title="Camoufox Runner", version="0.1.0")
@@ -66,19 +75,22 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
 
     @app.on_event("startup")
     async def _startup() -> None:
-        await state.startup()
+        await get_app_state(app).startup()
 
     @app.on_event("shutdown")
     async def _shutdown() -> None:
-        await state.shutdown()
+        await get_app_state(app).shutdown()
 
-    def get_manager() -> SessionManager:
+    def get_state(request: Request) -> AppState:
+        return get_app_state(request.app)
+
+    def get_manager(state: AppState = Depends(get_state)) -> SessionManager:
         if not state.manager:
             raise HTTPException(status_code=503, detail="Runner initialising")
         return state.manager
 
     @app.get("/health", response_model=HealthResponse)
-    async def health() -> HealthResponse:
+    async def health(state: AppState = Depends(get_state)) -> HealthResponse:
         checks = {"playwright": "ok" if state.manager else "starting"}
         return HealthResponse(status="ok", version=app.version, checks=checks)
 
@@ -126,7 +138,7 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
         return handle.detail(manager.ws_endpoint_for(handle), manager._build_vnc_payload(handle))
 
     @app.get(cfg.metrics_endpoint)
-    async def metrics() -> Response:
+    async def metrics(state: AppState = Depends(get_state)) -> Response:
         data = generate_latest(state.registry)
         return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 

@@ -8,7 +8,16 @@ import logging
 import uuid
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect, status
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    Request,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
 import websockets
@@ -42,6 +51,15 @@ def get_settings() -> WorkerSettings:
     return load_settings()
 
 
+def get_app_state(app: FastAPI) -> AppState:
+    """Return the application state stored on a FastAPI instance."""
+
+    state = getattr(app.state, "app_state", None)
+    if not isinstance(state, AppState):  # pragma: no cover - defensive branch
+        raise RuntimeError("Worker app state is not initialised")
+    return state
+
+
 def create_app(settings: WorkerSettings | None = None) -> FastAPI:
     cfg = settings or load_settings()
     app = FastAPI(title="Camofleet Worker", version="0.2.0")
@@ -61,13 +79,13 @@ def create_app(settings: WorkerSettings | None = None) -> FastAPI:
 
     @app.on_event("shutdown")
     async def _shutdown() -> None:
-        await state.shutdown()
+        await get_app_state(app).shutdown()
 
-    def require_state() -> AppState:
-        return state
+    def get_state(request: Request) -> AppState:
+        return get_app_state(request.app)
 
     @app.get("/health", response_model=HealthResponse)
-    async def health(app_state: AppState = Depends(require_state)) -> HealthResponse:
+    async def health(app_state: AppState = Depends(get_state)) -> HealthResponse:
         try:
             runner_health = await app_state.runner.health()
             status_text = runner_health.get("status", "unknown")
@@ -79,14 +97,14 @@ def create_app(settings: WorkerSettings | None = None) -> FastAPI:
         return HealthResponse(status=status_text, version=app.version, checks=checks)
 
     @app.get("/sessions", response_model=list[SessionDetail])
-    async def list_sessions(app_state: AppState = Depends(require_state)) -> list[SessionDetail]:
+    async def list_sessions(app_state: AppState = Depends(get_state)) -> list[SessionDetail]:
         data = await app_state.runner.list_sessions()
         return [_to_worker_detail(app_state, item) for item in data]
 
     @app.post("/sessions", response_model=SessionDetail, status_code=status.HTTP_201_CREATED)
     async def create_session(
         request: SessionCreateRequest,
-        app_state: AppState = Depends(require_state),
+        app_state: AppState = Depends(get_state),
     ) -> SessionDetail:
         if request.vnc and not app_state.settings.supports_vnc:
             raise HTTPException(status_code=400, detail="VNC is not supported by this worker")
@@ -97,7 +115,7 @@ def create_app(settings: WorkerSettings | None = None) -> FastAPI:
         return _to_worker_detail(app_state, data)
 
     @app.get("/sessions/{session_id}", response_model=SessionDetail)
-    async def get_session(session_id: str, app_state: AppState = Depends(require_state)) -> SessionDetail:
+    async def get_session(session_id: str, app_state: AppState = Depends(get_state)) -> SessionDetail:
         try:
             data = await app_state.runner.get_session(session_id)
         except httpx.HTTPStatusError as exc:
@@ -107,7 +125,7 @@ def create_app(settings: WorkerSettings | None = None) -> FastAPI:
         return _to_worker_detail(app_state, data)
 
     @app.delete("/sessions/{session_id}", response_model=SessionDeleteResponse)
-    async def delete_session(session_id: str, app_state: AppState = Depends(require_state)) -> SessionDeleteResponse:
+    async def delete_session(session_id: str, app_state: AppState = Depends(get_state)) -> SessionDeleteResponse:
         try:
             data = await app_state.runner.delete_session(session_id)
         except httpx.HTTPStatusError as exc:
@@ -117,7 +135,7 @@ def create_app(settings: WorkerSettings | None = None) -> FastAPI:
         return SessionDeleteResponse(id=data["id"], status=SessionStatus(data["status"]))
 
     @app.post("/sessions/{session_id}/touch", response_model=SessionDetail)
-    async def touch_session(session_id: str, app_state: AppState = Depends(require_state)) -> SessionDetail:
+    async def touch_session(session_id: str, app_state: AppState = Depends(get_state)) -> SessionDetail:
         try:
             data = await app_state.runner.touch_session(session_id)
         except httpx.HTTPStatusError as exc:
@@ -127,15 +145,19 @@ def create_app(settings: WorkerSettings | None = None) -> FastAPI:
         return _to_worker_detail(app_state, data)
 
     @app.get(cfg.metrics_endpoint)
-    async def metrics(app_state: AppState = Depends(require_state)) -> Response:
+    async def metrics(app_state: AppState = Depends(get_state)) -> Response:
         data = generate_latest(app_state.registry)
         return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 
     @app.websocket("/sessions/{session_id}/ws")
-    async def session_websocket(session_id: str, websocket: WebSocket) -> None:
+    async def session_websocket(
+        session_id: str,
+        websocket: WebSocket,
+        app_state: AppState = Depends(get_state),
+    ) -> None:
         await websocket.accept()
         try:
-            data = await state.runner.get_session(session_id)
+            data = await app_state.runner.get_session(session_id)
         except httpx.HTTPStatusError:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
