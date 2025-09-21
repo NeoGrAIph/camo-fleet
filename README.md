@@ -45,6 +45,7 @@ Camo-fleet/
 3. После запуска:
    - UI: `http://localhost:5173`
    - Control-plane API: `http://localhost:9000`
+   - Control-plane metrics: `http://localhost:9000/metrics`
    - Headless worker API: `http://localhost:8080`
    - VNC worker API: `http://localhost:8081`
    - noVNC: `http://localhost:69xx` (`ws://localhost:69xx`) — порт выдаётся динамически из диапазона 6900–6999
@@ -173,6 +174,7 @@ kubectl apply -k deploy/k8s
 | ------------------ | --------------------- | ------------------------------------------------ |
 | `CONTROL_WORKERS`  | см. config            | JSON-массив с воркерами: `name`, `url`, `supports_vnc`, `vnc_ws`, `vnc_http`. |
 | `CONTROL_PORT`     | `9000`                | Порт HTTP API.                                   |
+| `CONTROL_METRICS_ENDPOINT` | `/metrics`     | Путь, на котором публикуются Prometheus-метрики. |
 
 UI не требует переменных окружения — все настройки кодируются в nginx.
 
