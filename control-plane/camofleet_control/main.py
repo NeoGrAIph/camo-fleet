@@ -152,39 +152,52 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
 
     @app.get("/sessions", response_model=list[SessionDescriptor])
     async def list_sessions(state: AppState = Depends(get_state)) -> list[SessionDescriptor]:
-        results: list[SessionDescriptor] = []
-        for worker in state.list_workers():
-            async with worker_client(worker, cfg) as client:
-                try:
-                    response = await state.proxy_request(worker, "list_sessions", client.list_sessions)
-                    response.raise_for_status()
-                except httpx.HTTPError as exc:  # pragma: no cover - network failure
-                    LOGGER.warning("Failed to query worker %s: %s", worker.name, exc)
-                    continue
-                for item in response.json():
-                    public_ws_endpoint = build_public_ws_endpoint(cfg, worker.name, item["id"])
-                    vnc_payload = item.get("vnc", item.get("vnc_info", {}))
-                    vnc_enabled = item.get("vnc_enabled")
-                    if vnc_enabled is None and vnc_payload:
-                        vnc_enabled = bool(vnc_payload.get("http") or vnc_payload.get("ws"))
-                    results.append(
-                        SessionDescriptor(
-                            worker=worker.name,
-                            id=item["id"],
-                            status=item["status"],
-                            created_at=item["created_at"],
-                            last_seen_at=item["last_seen_at"],
-                            browser=item.get("browser", "camoufox"),
-                            headless=item["headless"],
-                            idle_ttl_seconds=item["idle_ttl_seconds"],
-                            labels=item.get("labels", {}),
-                            ws_endpoint=public_ws_endpoint,
-                            vnc_enabled=vnc_enabled,
-                            vnc=vnc_payload,
-                            start_url_wait=item.get("start_url_wait"),
+        workers = state.list_workers()
+        if not workers:
+            return []
+
+        semaphore = asyncio.Semaphore(max(1, state.settings.list_sessions_concurrency))
+
+        async def fetch_worker_sessions(worker: WorkerConfig) -> list[SessionDescriptor]:
+            async with semaphore:
+                async with worker_client(worker, cfg) as client:
+                    try:
+                        response = await state.proxy_request(
+                            worker, "list_sessions", client.list_sessions
                         )
+                        response.raise_for_status()
+                    except httpx.HTTPError as exc:  # pragma: no cover - network failure
+                        LOGGER.warning("Failed to query worker %s: %s", worker.name, exc)
+                        return []
+            sessions: list[SessionDescriptor] = []
+            for item in response.json():
+                public_ws_endpoint = build_public_ws_endpoint(cfg, worker.name, item["id"])
+                vnc_payload = item.get("vnc", item.get("vnc_info", {}))
+                vnc_enabled = item.get("vnc_enabled")
+                if vnc_enabled is None and vnc_payload:
+                    vnc_enabled = bool(vnc_payload.get("http") or vnc_payload.get("ws"))
+                sessions.append(
+                    SessionDescriptor(
+                        worker=worker.name,
+                        id=item["id"],
+                        status=item["status"],
+                        created_at=item["created_at"],
+                        last_seen_at=item["last_seen_at"],
+                        browser=item.get("browser", "camoufox"),
+                        headless=item["headless"],
+                        idle_ttl_seconds=item["idle_ttl_seconds"],
+                        labels=item.get("labels", {}),
+                        ws_endpoint=public_ws_endpoint,
+                        vnc_enabled=vnc_enabled,
+                        vnc=vnc_payload,
+                        start_url_wait=item.get("start_url_wait"),
                     )
-        return results
+                )
+            return sessions
+
+        tasks = [fetch_worker_sessions(worker) for worker in workers]
+        results = await asyncio.gather(*tasks)
+        return [item for worker_sessions in results for item in worker_sessions]
 
     @app.post("/sessions", response_model=CreateSessionResponse, status_code=status.HTTP_201_CREATED)
     async def create_session(
