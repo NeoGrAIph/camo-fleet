@@ -27,6 +27,7 @@ class ControlSettings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 9000
     cors_origins: list[str] = Field(default_factory=lambda: ["*"])
+    list_sessions_concurrency: Annotated[int, Field(ge=1)] = 5
     workers: list[WorkerConfig] = Field(
         default_factory=lambda: [
             WorkerConfig(
