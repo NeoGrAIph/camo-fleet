@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -17,10 +18,13 @@ class SessionDefaults(BaseModel):
     start_url: str | None = None
 
 
+ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+
+
 class RunnerSettings(BaseSettings):
     """Runtime settings for the runner."""
 
-    model_config = SettingsConfigDict(env_prefix="RUNNER_", env_file=".env")
+    model_config = SettingsConfigDict(env_prefix="RUNNER_", env_file=ENV_FILE)
 
     host: str = "0.0.0.0"
     port: int = 8070
