@@ -11,6 +11,7 @@ from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 import httpx
+import websockets
 from fastapi import (
     Depends,
     FastAPI,
@@ -30,7 +31,6 @@ from prometheus_client import (
     Histogram,
     generate_latest,
 )
-import websockets
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 
 from .config import ControlSettings, WorkerConfig, load_settings
@@ -78,7 +78,9 @@ class AppState:
     def list_workers(self) -> list[WorkerConfig]:
         return list(self.settings.workers)
 
-    def pick_worker(self, preferred: str | None = None, *, require_vnc: bool = False) -> WorkerConfig:
+    def pick_worker(
+        self, preferred: str | None = None, *, require_vnc: bool = False
+    ) -> WorkerConfig:
         workers = [w for w in self.list_workers() if not require_vnc or w.supports_vnc]
         if preferred:
             for worker in workers:
@@ -156,7 +158,10 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     async def health(state: AppState = Depends(get_state)) -> dict:
         worker_statuses = await gather_worker_status(state)
         healthy = all(item.healthy for item in worker_statuses) if worker_statuses else False
-        return {"status": "ok" if healthy else "degraded", "workers": [s.model_dump() for s in worker_statuses]}
+        return {
+            "status": "ok" if healthy else "degraded",
+            "workers": [s.model_dump() for s in worker_statuses],
+        }
 
     @app.get("/workers", response_model=list[WorkerStatus])
     async def list_workers_endpoint(state: AppState = Depends(get_state)) -> list[WorkerStatus]:
@@ -174,7 +179,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             async with semaphore:
                 async with worker_client(worker, cfg) as client:
                     try:
-                        response = await state.proxy_request(worker, "list_sessions", client.list_sessions)
+                        response = await state.proxy_request(
+                            worker, "list_sessions", client.list_sessions
+                        )
                         response.raise_for_status()
                     except httpx.HTTPError as exc:  # pragma: no cover - network failure
                         LOGGER.warning("Failed to query worker %s: %s", worker.name, exc)
@@ -212,7 +219,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         results = await asyncio.gather(*tasks)
         return [item for worker_sessions in results for item in worker_sessions]
 
-    @app.post("/sessions", response_model=CreateSessionResponse, status_code=status.HTTP_201_CREATED)
+    @app.post(
+        "/sessions", response_model=CreateSessionResponse, status_code=status.HTTP_201_CREATED
+    )
     async def create_session(
         request: CreateSessionRequest,
         state: AppState = Depends(get_state),
@@ -221,7 +230,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         payload = request.model_dump(exclude_unset=True)
         payload.pop("worker", None)
         async with worker_client(worker, cfg) as client:
-            response = await state.proxy_request(worker, "create_session", client.create_session, payload)
+            response = await state.proxy_request(
+                worker, "create_session", client.create_session, payload
+            )
         if response.status_code >= 400:
             raise HTTPException(status_code=response.status_code, detail=response.text)
         body = response.json()
@@ -237,10 +248,14 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         return CreateSessionResponse(worker=worker.name, **body)
 
     @app.get("/sessions/{worker_name}/{session_id}", response_model=SessionDescriptor)
-    async def get_session(worker_name: str, session_id: str, state: AppState = Depends(get_state)) -> SessionDescriptor:
+    async def get_session(
+        worker_name: str, session_id: str, state: AppState = Depends(get_state)
+    ) -> SessionDescriptor:
         worker = state.pick_worker(worker_name)
         async with worker_client(worker, cfg) as client:
-            response = await state.proxy_request(worker, "get_session", client.get_session, session_id)
+            response = await state.proxy_request(
+                worker, "get_session", client.get_session, session_id
+            )
         if response.status_code == 404:
             raise HTTPException(status_code=404, detail="Session not found")
         response.raise_for_status()
@@ -257,10 +272,14 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         return SessionDescriptor(worker=worker.name, **body)
 
     @app.delete("/sessions/{worker_name}/{session_id}")
-    async def delete_session(worker_name: str, session_id: str, state: AppState = Depends(get_state)) -> dict:
+    async def delete_session(
+        worker_name: str, session_id: str, state: AppState = Depends(get_state)
+    ) -> dict:
         worker = state.pick_worker(worker_name)
         async with worker_client(worker, cfg) as client:
-            response = await state.proxy_request(worker, "delete_session", client.delete_session, session_id)
+            response = await state.proxy_request(
+                worker, "delete_session", client.delete_session, session_id
+            )
         if response.status_code == 404:
             raise HTTPException(status_code=404, detail="Session not found")
         response.raise_for_status()
@@ -274,7 +293,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     ) -> SessionDescriptor:
         worker = state.pick_worker(worker_name)
         async with worker_client(worker, cfg) as client:
-            response = await state.proxy_request(worker, "touch_session", client.touch_session, session_id)
+            response = await state.proxy_request(
+                worker, "touch_session", client.touch_session, session_id
+            )
         if response.status_code == 404:
             raise HTTPException(status_code=404, detail="Session not found")
         response.raise_for_status()
@@ -302,6 +323,8 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         session_id: str,
         state: AppState = Depends(get_state),
     ) -> None:
+        """Proxy WebSocket traffic through the control-plane towards a specific worker."""
+
         worker = state.pick_worker(worker_name)
         upstream_endpoint = build_worker_ws_endpoint(worker, session_id)
         await websocket.accept()
@@ -425,7 +448,11 @@ def normalise_public_prefix(prefix: str) -> str:
     return value.rstrip("/")
 
 
-async def _forward_client_to_upstream(websocket: WebSocket, upstream: websockets.WebSocketClientProtocol) -> None:
+async def _forward_client_to_upstream(
+    websocket: WebSocket, upstream: websockets.WebSocketClientProtocol
+) -> None:
+    """Forward client messages to the upstream worker WebSocket."""
+
     try:
         while True:
             message = await websocket.receive()
@@ -441,10 +468,14 @@ async def _forward_client_to_upstream(websocket: WebSocket, upstream: websockets
         await upstream.close()
 
 
-async def _forward_upstream_to_client(websocket: WebSocket, upstream: websockets.WebSocketClientProtocol) -> None:
+async def _forward_upstream_to_client(
+    websocket: WebSocket, upstream: websockets.WebSocketClientProtocol
+) -> None:
+    """Forward upstream worker messages to the client WebSocket."""
+
     try:
         async for data in upstream:
-            if isinstance(data, (bytes, bytearray)):
+            if isinstance(data, bytes | bytearray):
                 await websocket.send_bytes(data)
             else:
                 await websocket.send_text(data)

@@ -52,7 +52,7 @@ class RunnerSettings(BaseSettings):
     prewarm_check_interval_seconds: Annotated[float, Field(gt=0.1, le=60.0)] = 2.0
 
     @model_validator(mode="after")
-    def _validate_vnc_ranges(self) -> "RunnerSettings":
+    def _validate_vnc_ranges(self) -> RunnerSettings:
         if self.vnc_display_min > self.vnc_display_max:
             raise ValueError("vnc_display_min must be less than or equal to vnc_display_max")
         if self.vnc_port_min > self.vnc_port_max:

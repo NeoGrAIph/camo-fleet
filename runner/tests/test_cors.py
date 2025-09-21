@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi.middleware.cors import CORSMiddleware
-
 from camoufox_runner.config import RunnerSettings
 from camoufox_runner.main import create_app
+from fastapi.middleware.cors import CORSMiddleware
 
 
 def _get_cors_options(app: Any) -> dict[str, Any]:

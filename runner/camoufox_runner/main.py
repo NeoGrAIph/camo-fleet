@@ -107,11 +107,15 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
         try:
             handle = await manager.create(payload)
         except VNCUnavailableError as exc:
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+            ) from exc
         return manager.detail_for(handle)
 
     @app.get("/sessions/{session_id}", response_model=SessionDetail)
-    async def get_session(session_id: str, manager: SessionManager = Depends(get_manager)) -> SessionDetail:
+    async def get_session(
+        session_id: str, manager: SessionManager = Depends(get_manager)
+    ) -> SessionDetail:
         handle = await manager.get(session_id)
         if not handle:
             raise HTTPException(status_code=404, detail="Session not found")

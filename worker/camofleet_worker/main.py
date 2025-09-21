@@ -8,6 +8,7 @@ import logging
 import uuid
 
 import httpx
+import websockets
 from fastapi import (
     Depends,
     FastAPI,
@@ -20,7 +21,6 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
-import websockets
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 
 from .config import WorkerSettings, load_settings
@@ -115,7 +115,9 @@ def create_app(settings: WorkerSettings | None = None) -> FastAPI:
         return _to_worker_detail(app_state, data)
 
     @app.get("/sessions/{session_id}", response_model=SessionDetail)
-    async def get_session(session_id: str, app_state: AppState = Depends(get_state)) -> SessionDetail:
+    async def get_session(
+        session_id: str, app_state: AppState = Depends(get_state)
+    ) -> SessionDetail:
         try:
             data = await app_state.runner.get_session(session_id)
         except httpx.HTTPStatusError as exc:
@@ -125,7 +127,9 @@ def create_app(settings: WorkerSettings | None = None) -> FastAPI:
         return _to_worker_detail(app_state, data)
 
     @app.delete("/sessions/{session_id}", response_model=SessionDeleteResponse)
-    async def delete_session(session_id: str, app_state: AppState = Depends(get_state)) -> SessionDeleteResponse:
+    async def delete_session(
+        session_id: str, app_state: AppState = Depends(get_state)
+    ) -> SessionDeleteResponse:
         try:
             data = await app_state.runner.delete_session(session_id)
         except httpx.HTTPStatusError as exc:
@@ -135,7 +139,9 @@ def create_app(settings: WorkerSettings | None = None) -> FastAPI:
         return SessionDeleteResponse(id=data["id"], status=SessionStatus(data["status"]))
 
     @app.post("/sessions/{session_id}/touch", response_model=SessionDetail)
-    async def touch_session(session_id: str, app_state: AppState = Depends(get_state)) -> SessionDetail:
+    async def touch_session(
+        session_id: str, app_state: AppState = Depends(get_state)
+    ) -> SessionDetail:
         try:
             data = await app_state.runner.touch_session(session_id)
         except httpx.HTTPStatusError as exc:
@@ -155,6 +161,8 @@ def create_app(settings: WorkerSettings | None = None) -> FastAPI:
         websocket: WebSocket,
         app_state: AppState = Depends(get_state),
     ) -> None:
+        """Proxy WebSocket traffic between the client and the underlying runner session."""
+
         await websocket.accept()
         try:
             data = await app_state.runner.get_session(session_id)
@@ -192,6 +200,8 @@ def _to_worker_detail(app_state: AppState, data: dict) -> SessionDetail:
 
 
 async def _bridge_websocket(websocket: WebSocket, upstream_endpoint: str) -> None:
+    """Stream messages bidirectionally between FastAPI WebSocket and upstream endpoint."""
+
     try:
         async with websockets.connect(upstream_endpoint, ping_interval=None) as upstream:
             client_to_upstream = asyncio.create_task(
@@ -221,7 +231,11 @@ async def _bridge_websocket(websocket: WebSocket, upstream_endpoint: str) -> Non
             await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
 
 
-async def _forward_client_to_upstream(websocket: WebSocket, upstream: websockets.WebSocketClientProtocol) -> None:
+async def _forward_client_to_upstream(
+    websocket: WebSocket, upstream: websockets.WebSocketClientProtocol
+) -> None:
+    """Forward messages received from the UI WebSocket to the upstream server."""
+
     try:
         while True:
             message = await websocket.receive()
@@ -237,10 +251,14 @@ async def _forward_client_to_upstream(websocket: WebSocket, upstream: websockets
         await upstream.close()
 
 
-async def _forward_upstream_to_client(websocket: WebSocket, upstream: websockets.WebSocketClientProtocol) -> None:
+async def _forward_upstream_to_client(
+    websocket: WebSocket, upstream: websockets.WebSocketClientProtocol
+) -> None:
+    """Forward messages received from the upstream server to the UI WebSocket."""
+
     try:
         async for data in upstream:
-            if isinstance(data, (bytes, bytearray)):
+            if isinstance(data, bytes | bytearray):
                 await websocket.send_bytes(data)
             else:
                 await websocket.send_text(data)

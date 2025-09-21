@@ -5,11 +5,10 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.testclient import TestClient
-
 from camofleet_worker.config import WorkerSettings
 from camofleet_worker.main import create_app
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.testclient import TestClient
 
 
 class StubRunner:
