@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated
 
 from pydantic import BaseModel, Field
@@ -19,14 +20,18 @@ class WorkerConfig(BaseModel):
     supports_vnc: bool = False
 
 
+ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+
+
 class ControlSettings(BaseSettings):
     """Runtime configuration."""
 
-    model_config = SettingsConfigDict(env_prefix="CONTROL_", env_file=".env")
+    model_config = SettingsConfigDict(env_prefix="CONTROL_", env_file=ENV_FILE)
 
     host: str = "0.0.0.0"
     port: int = 9000
     cors_origins: list[str] = Field(default_factory=lambda: ["*"])
+    list_sessions_concurrency: Annotated[int, Field(ge=1)] = 5
     workers: list[WorkerConfig] = Field(
         default_factory=lambda: [
             WorkerConfig(
