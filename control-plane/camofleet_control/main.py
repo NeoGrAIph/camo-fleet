@@ -157,6 +157,27 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         response.raise_for_status()
         return response.json()
 
+    @app.post("/sessions/{worker_name}/{session_id}/touch", response_model=SessionDescriptor)
+    async def touch_session(
+        worker_name: str,
+        session_id: str,
+        state: AppState = Depends(get_state),
+    ) -> SessionDescriptor:
+        worker = state.pick_worker(worker_name)
+        async with worker_client(worker, cfg) as client:
+            response = await client.touch_session(session_id)
+        if response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Session not found")
+        response.raise_for_status()
+        body = response.json()
+        body["ws_endpoint"] = build_public_ws_endpoint(cfg, worker.name, body["id"])
+        body.setdefault("browser", "camoufox")
+        if "vnc" not in body and "vnc_info" in body:
+            body["vnc"] = body.pop("vnc_info")
+        if "vnc_enabled" not in body and "vnc" in body:
+            body["vnc_enabled"] = bool(body["vnc"].get("http") or body["vnc"].get("ws"))
+        return SessionDescriptor(worker=worker.name, **body)
+
     @app.websocket("/sessions/{worker_name}/{session_id}/ws")
     async def session_websocket(
         websocket: WebSocket,
@@ -203,32 +224,33 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
 
 
 async def gather_worker_status(workers: Iterable[WorkerConfig], cfg: ControlSettings) -> list[WorkerStatus]:
-    statuses: list[WorkerStatus] = []
-    for worker in workers:
+    worker_list = list(workers)
+
+    async def _fetch_status(worker: WorkerConfig) -> WorkerStatus:
         async with worker_client(worker, cfg) as client:
             try:
                 response = await client.health()
                 response.raise_for_status()
                 detail = response.json()
-                statuses.append(
-                    WorkerStatus(
-                        name=worker.name,
-                        healthy=True,
-                        detail=detail,
-                        supports_vnc=worker.supports_vnc,
-                    )
+                return WorkerStatus(
+                    name=worker.name,
+                    healthy=True,
+                    detail=detail,
+                    supports_vnc=worker.supports_vnc,
                 )
             except httpx.HTTPError as exc:  # pragma: no cover
                 LOGGER.warning("Worker %s unhealthy: %s", worker.name, exc)
-                statuses.append(
-                    WorkerStatus(
-                        name=worker.name,
-                        healthy=False,
-                        detail={"error": str(exc)},
-                        supports_vnc=worker.supports_vnc,
-                    )
+                return WorkerStatus(
+                    name=worker.name,
+                    healthy=False,
+                    detail={"error": str(exc)},
+                    supports_vnc=worker.supports_vnc,
                 )
-    return statuses
+
+    if not worker_list:
+        return []
+
+    return list(await asyncio.gather(*(_fetch_status(worker) for worker in worker_list)))
 
 
 def build_public_ws_endpoint(settings: ControlSettings, worker_name: str, session_id: str) -> str:
@@ -239,9 +261,13 @@ def build_public_ws_endpoint(settings: ControlSettings, worker_name: str, sessio
 def build_worker_ws_endpoint(worker: WorkerConfig, session_id: str) -> str:
     parsed = urlparse(worker.url)
     scheme = "wss" if parsed.scheme == "https" else "ws"
-    base = parsed._replace(scheme=scheme, path="", params="", query="", fragment="")
-    base_url = urlunparse(base).rstrip("/")
-    return f"{base_url}/sessions/{session_id}/ws"
+    path = parsed.path.rstrip("/")
+    if path:
+        path = f"{path}/sessions/{session_id}/ws"
+    else:
+        path = f"/sessions/{session_id}/ws"
+    base = parsed._replace(scheme=scheme, path=path, params="", query="", fragment="")
+    return urlunparse(base)
 
 
 def normalise_public_prefix(prefix: str) -> str:

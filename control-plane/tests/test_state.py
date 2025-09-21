@@ -77,3 +77,8 @@ def test_build_worker_ws_endpoint() -> None:
         build_worker_ws_endpoint(worker, "sess")
         == "wss://worker.example/sessions/sess/ws"
     )
+    worker = WorkerConfig(name="c", url="https://worker.example/prefix")
+    assert (
+        build_worker_ws_endpoint(worker, "sess")
+        == "wss://worker.example/prefix/sessions/sess/ws"
+    )
