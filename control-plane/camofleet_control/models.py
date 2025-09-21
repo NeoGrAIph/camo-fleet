@@ -9,6 +9,8 @@ from pydantic import BaseModel
 
 
 class WorkerStatus(BaseModel):
+    """Health summary for a worker returned by the control-plane."""
+
     name: str
     healthy: bool
     detail: dict[str, Any]
@@ -16,6 +18,13 @@ class WorkerStatus(BaseModel):
 
 
 class SessionDescriptor(BaseModel):
+    """Session payload exposed by the control-plane/UI layer.
+
+    Поле :attr:`vnc_enabled` наследует значение из worker'а, а :attr:`vnc`
+    содержит словарь, полученный от runner'а (`ws`, `http`,
+    `password_protected`).
+    """
+
     worker: str
     id: str
     status: str

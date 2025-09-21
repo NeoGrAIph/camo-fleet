@@ -186,6 +186,19 @@ def create_app(settings: WorkerSettings | None = None) -> FastAPI:
 
 
 def _to_worker_detail(app_state: AppState, data: dict) -> SessionDetail:
+    """Convert runner payloads to worker-visible session details.
+
+    Runner возвращает булев флаг `vnc` и словарь `vnc_info`. Worker
+    транслирует их в `vnc_enabled` и `vnc` соответственно, гарантируя, что
+    булево значение согласовано со списком конечных точек.
+    """
+
+    vnc_payload = data.get("vnc_info") or {}
+    if not isinstance(vnc_payload, dict):
+        vnc_payload = {}
+    vnc_enabled = bool(data.get("vnc", False))
+    if not vnc_enabled and vnc_payload:
+        vnc_enabled = bool(vnc_payload.get("http") or vnc_payload.get("ws"))
     return SessionDetail(
         id=data["id"],
         status=SessionStatus(data["status"]),
@@ -196,10 +209,10 @@ def _to_worker_detail(app_state: AppState, data: dict) -> SessionDetail:
         idle_ttl_seconds=data["idle_ttl_seconds"],
         labels=data.get("labels", {}),
         worker_id=app_state.worker_id,
-        vnc_enabled=data.get("vnc", False),
+        vnc_enabled=vnc_enabled,
         start_url_wait=data.get("start_url_wait", "load"),
         ws_endpoint=f"/sessions/{data['id']}/ws",
-        vnc=data.get("vnc_info", {}),
+        vnc=vnc_payload,
     )
 
 

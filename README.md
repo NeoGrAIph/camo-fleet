@@ -9,7 +9,7 @@ runner-контейнер. Репозиторий содержит четыре 
   образов (headless и с VNC/noVNC).
 - **control-plane** — облегчённый оркестратор, проксирующий HTTP-запросы к воркерам и предоставляющий
   единый REST API для UI.
-- **ui** — React SPA с панелью: список сессий, запуск новых и ссылки на WebSocket/VNC подключения.
+- **ui** — React SPA с панелью: список сессий, запуск новых и ссылки на WebSocket/VNC подключения; данные обновляются периодическим REST polling'ом.
 
 ## Возможности
 
@@ -30,6 +30,36 @@ Camo-fleet/
 ├── ui/                    # Vite + React SPA
 └── worker/                # API worker, проксирующий runner
 ```
+
+## Архитектура взаимодействия
+
+### Потоки запросов
+
+1. **UI → Control-plane.** Клиентское приложение запрашивает `/workers` и `/sessions` у control-plane каждые 5 секунд. При действиях пользователя (создание, touch, завершение) отправляются POST/DELETE запросы на REST API. WebSocket-подключения к `ws_endpoint` проходят через control-plane.
+2. **Control-plane → Worker.** Control-plane использует общий пул `httpx.AsyncClient` (см. `control-plane/camofleet_control/service.py`) для проксирования вызовов. Метрики (`Histogram`, `Counter`, `Gauge`) отражают время и успешность каждого обращения.
+3. **Worker → Runner.** Worker валидирует запросы, применяет значения по умолчанию и проксирует их к локальному runner'у. Для WebSocket трафика используется общий мост `shared.websocket_bridge`.
+4. **Runner.** Управляет жизненным циклом Camoufox, поддерживает prewarm пул, TTL, VNC toolchain и выдаёт `ws_endpoint`/`vnc_info` для каждой сессии.
+
+### Основные модели
+
+- **Runner → Worker:** `SessionSummary` и `SessionDetail` (`runner/camoufox_runner/models.py`). Поле `vnc` показывает, запущена ли VNC-надстройка для сессии, а `vnc_info` содержит словарь с ключами `ws`, `http`, `password_protected`.
+- **Worker → Control-plane:** `SessionDetail` (`worker/camofleet_worker/models.py`). Worker конвертирует `vnc` в `vnc_enabled` (булево) и прокидывает `vnc_info` как поле `vnc` для дальнейшей публикации наружу.
+- **Control-plane → UI:** `SessionDescriptor` и `CreateSessionResponse` (`control-plane/camofleet_control/models.py`). Дополнительно control-plane вычисляет публичные `ws_endpoint` и, если заданы, подменяет базовые URL VNC.
+
+### Общие модули
+
+- `shared.websocket_bridge` — двунаправленный мост FastAPI WebSocket ↔ `websockets.WebSocketClientProtocol`, используемый и воркером, и control-plane.
+- `shared.tests` — юнит-тесты общих утилит (при наличии) и вспомогательная инфраструктура.
+
+### Live-обновления UI
+
+UI не использует SSE: актуальность данных поддерживается 5-секундным polling'ом REST API. Интерфейс отображает состояние последнего обновления, а все критичные действия (создание, touch, завершение) сразу обновляют локальное состояние без ожидания очередного опроса.
+
+### Поля VNC в API
+
+- `vnc` — опциональный флаг в запросах на создание и в ответах runner'а, который показывает, что для сессии запущен VNC toolchain.
+- `vnc_enabled` — булево поле в ответах worker/control-plane/UI, сигнализирующее, что предпросмотр доступен (комбинация `http`/`ws` ссылок не пустая).
+- `vnc_info` — внутреннее поле runner'а с подробностями подключения (`ws`, `http`, `password_protected`); worker передаёт его наружу как поле `vnc`.
 
 ## Стиль кодирования
 
@@ -254,14 +284,14 @@ cd control-plane && pip install -e .[dev] && pytest
 - `GET /health` — состояние сервиса.
 - `GET /sessions` — список активных сессий.
 - `POST /sessions` — создание новой сессии. Поддерживает `vnc=true` для запроса VNC-предпросмотра, `start_url` и `start_url_wait` (при значениях `domcontentloaded` / `load` раннер откроет URL асинхронно, при `none` страница не будет загружена автоматически — например, VNC покажет пустой профиль, пока вы не перейдёте на адрес вручную).
-- `GET /sessions/{id}` — детали, включая VNC ссылки, флаг `vnc_enabled` и режим ожидания `start_url_wait`.
+- `GET /sessions/{id}` — детали, включая словарь `vnc` (runner `vnc_info`), булев флаг `vnc_enabled` и режим ожидания `start_url_wait`.
 - `POST /sessions/{id}/touch` — продлить TTL.
 - `DELETE /sessions/{id}` — завершение.
 
 ### Control-plane
 
 - `GET /workers` — статусы всех воркеров.
-- `GET /sessions` — агрегированный список.
+- `GET /sessions` — агрегированный список: каждый элемент содержит публичный `ws_endpoint`, флаг `vnc_enabled` и словарь `vnc` с конечными точками предпросмотра.
 - `POST /sessions` — создать сессию на выбранном воркере или через round-robin (прокидывает `vnc`, `start_url` и `start_url_wait` дальше к воркерам и runner'у).
 - `GET /sessions/{worker}/{id}` — детали.
 - `DELETE /sessions/{worker}/{id}` — завершение.

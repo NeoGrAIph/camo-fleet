@@ -100,6 +100,7 @@ export default function App(): JSX.Element {
       }
     };
     load();
+    // Update worker/session lists via REST polling every 5 seconds.
     const interval = window.setInterval(load, 5000);
     return () => window.clearInterval(interval);
   }, []);

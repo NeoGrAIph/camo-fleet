@@ -19,7 +19,11 @@ class SessionStatus(str, Enum):
 
 
 class SessionCreateRequest(BaseModel):
-    """Inbound payload for creating a new browser session."""
+    """Inbound payload forwarded from the control-plane to the runner.
+
+    Поле :attr:`vnc` сигнализирует runner'у, что требуется VNC toolchain;
+    worker дополнительно проверяет поддержку VNC у своего инстанса.
+    """
 
     headless: bool | None = None
     idle_ttl_seconds: Annotated[int | None, Field(ge=30, le=3600)] = None
@@ -32,7 +36,11 @@ class SessionCreateRequest(BaseModel):
 
 
 class SessionSummary(BaseModel):
-    """Short session description."""
+    """Short session description exposed by the worker API.
+
+    :attr:`vnc_enabled` — булево отображение runner-флага `vnc` и/или наличия
+    подключений в :attr:`SessionDetail.vnc`.
+    """
 
     id: str
     status: SessionStatus
@@ -48,7 +56,11 @@ class SessionSummary(BaseModel):
 
 
 class SessionDetail(SessionSummary):
-    """Extended session representation."""
+    """Extended session representation.
+
+    Поле :attr:`vnc` наследует структуру runner'а (`ws`, `http`,
+    `password_protected`) и напрямую передаётся control-plane/UI.
+    """
 
     ws_endpoint: str
     vnc: dict[str, str | bool | None]

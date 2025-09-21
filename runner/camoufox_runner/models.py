@@ -17,6 +17,12 @@ class SessionStatus(str, Enum):
 
 
 class SessionCreateRequest(BaseModel):
+    """Inbound payload for creating a new browser session.
+
+    Поле :attr:`vnc` включает VNC toolchain (Xvfb/x11vnc/websockify) для сессии.
+    Остальные атрибуты соответствуют опциям Camoufox runner'а.
+    """
+
     headless: bool | None = None
     idle_ttl_seconds: Annotated[int | None, Field(ge=30, le=3600)] = None
     start_url: Annotated[str | None, Field(max_length=1024)] = None
@@ -29,6 +35,12 @@ class SessionCreateRequest(BaseModel):
 
 
 class SessionSummary(BaseModel):
+    """Minimal runner-side representation of an active session.
+
+    Поле :attr:`vnc` показывает, что для сессии активирован VNC слой. Worker
+    транслирует его наружу как `vnc_enabled`.
+    """
+
     id: str
     status: SessionStatus
     created_at: datetime
@@ -41,6 +53,12 @@ class SessionSummary(BaseModel):
 
 
 class SessionDetail(SessionSummary):
+    """Detailed session payload returned by the runner.
+
+    :attr:`vnc_info` содержит фактические конечные точки VNC (`ws`, `http`,
+    `password_protected`). Worker передаёт словарь как `vnc` в свои ответы.
+    """
+
     ws_endpoint: str
     vnc_info: dict[str, str | bool | None]
 
