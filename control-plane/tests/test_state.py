@@ -38,6 +38,11 @@ def test_pick_worker_round_robin() -> None:
     assert state.pick_worker().name == "a"
 
 
+def test_create_app_initialises_state() -> None:
+    app = create_app(ControlSettings())
+    assert isinstance(app.state.app_state, AppState)
+
+
 def test_pick_worker_by_name() -> None:
     workers = [WorkerConfig(name="x", url="http://x")]
     state = AppState(make_settings(workers))

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.middleware.cors import CORSMiddleware
@@ -140,3 +142,16 @@ def test_delete_session_removes_from_store(stub_app: TestClient) -> None:
     list_resp = stub_app.get("/sessions")
     assert list_resp.status_code == 200
     assert list_resp.json() == []
+
+
+def test_worker_shutdown_closes_runner() -> None:
+    settings = WorkerSettings(runner_base_url="http://runner", supports_vnc=False)
+    app = create_app(settings)
+    state = app.state.app_state
+    close_mock = AsyncMock()
+    state.runner = SimpleNamespace(close=close_mock)
+
+    with TestClient(app):
+        pass
+
+    close_mock.assert_awaited_once()

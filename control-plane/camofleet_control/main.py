@@ -15,6 +15,7 @@ from fastapi import (
     Depends,
     FastAPI,
     HTTPException,
+    Request,
     Response,
     WebSocket,
     WebSocketDisconnect,
@@ -122,6 +123,15 @@ def get_settings() -> ControlSettings:
     return load_settings()
 
 
+def get_app_state(app: FastAPI) -> AppState:
+    """Return the control-plane application state."""
+
+    state = getattr(app.state, "app_state", None)
+    if not isinstance(state, AppState):  # pragma: no cover - defensive branch
+        raise RuntimeError("Control-plane app state is not initialised")
+    return state
+
+
 def create_app(settings: ControlSettings | None = None) -> FastAPI:
     cfg = settings or load_settings()
     app = FastAPI(title="Camofleet Control", version="0.1.0")
@@ -137,9 +147,10 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     )
 
     state = AppState(cfg)
+    app.state.app_state = state
 
-    def get_state() -> AppState:
-        return state
+    def get_state(request: Request) -> AppState:
+        return get_app_state(request.app)
 
     @app.get("/health")
     async def health(state: AppState = Depends(get_state)) -> dict:
