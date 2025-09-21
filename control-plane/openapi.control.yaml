@@ -120,10 +120,12 @@ components:
           type: string
         healthy:
           type: boolean
+        supports_vnc:
+          type: boolean
         detail:
           type: object
           additionalProperties: true
-      required: [name, healthy, detail]
+      required: [name, healthy, supports_vnc, detail]
     SessionDescriptor:
       type: object
       properties:
