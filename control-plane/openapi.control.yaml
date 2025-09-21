@@ -158,7 +158,16 @@ components:
           description: Whether a VNC preview is available for this session.
         vnc:
           type: object
-          additionalProperties: true
+          properties:
+            ws:
+              type: string
+              nullable: true
+            http:
+              type: string
+              nullable: true
+            password_protected:
+              type: boolean
+          additionalProperties: false
         start_url_wait:
           type: string
           nullable: true
