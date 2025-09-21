@@ -301,7 +301,7 @@ export default function App(): JSX.Element {
       <aside className="sidebar">
         <header className="sidebar-header">
           <div>
-            <h1>Selenoid UI v2</h1>
+            <h1>Camofleet UI</h1>
             <p className="subtitle">Camofleet control panel</p>
           </div>
           <button className="btn btn-ghost" type="button" onClick={onThemeToggle}>
