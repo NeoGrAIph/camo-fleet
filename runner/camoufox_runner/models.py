@@ -23,6 +23,9 @@ class SessionCreateRequest(BaseModel):
     start_url_wait: Literal["none", "domcontentloaded", "load"] | None = None
     labels: dict[str, str] | None = None
     vnc: bool = False
+    # Optional per-session proxy override compatible with Playwright config
+    # fields: server, username, password, bypass
+    proxy: dict[str, str] | None = None
 
 
 class SessionSummary(BaseModel):
