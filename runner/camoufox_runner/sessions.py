@@ -7,6 +7,7 @@ import contextlib
 import json
 import logging
 import os
+import shutil
 import tempfile
 import time
 import uuid
@@ -44,6 +45,19 @@ class VncSession:
     ws_url: str | None
     processes: list[aio_subprocess.Process]
     drain_tasks: list[asyncio.Task[None]] = field(default_factory=list)
+
+
+class VNCUnavailableError(RuntimeError):
+    """Raised when VNC-specific operations are requested but tooling is absent."""
+
+
+@dataclass(slots=True)
+class _Prewarmed:
+    """Container holding a prewarmed browser server and optional VNC session."""
+
+    server: "_SubprocessBrowserServer"
+    vnc_session: VncSession | None
+    headless: bool
 
 
 class VncResourcePool:
@@ -94,6 +108,7 @@ class SessionHandle:
     controller_context: Any | None = None
     controller_page: Any | None = None
     vnc_session: VncSession | None = field(default=None, repr=False)
+    start_url_wait: str = "load"
 
     def summary(self) -> SessionSummary:
         return SessionSummary(
@@ -105,6 +120,7 @@ class SessionHandle:
             idle_ttl_seconds=self.idle_ttl_seconds,
             labels=self.labels,
             vnc=self.vnc,
+            start_url_wait=self.start_url_wait,
         )
 
     def detail(self, ws_endpoint: str, vnc_payload: dict[str, Any]) -> SessionDetail:
@@ -122,20 +138,46 @@ class SessionManager:
         self._sessions: dict[str, SessionHandle] = {}
         self._lock = asyncio.Lock()
         self._cleanup_task: asyncio.Task[None] | None = None
+        self._prewarm_task: asyncio.Task[None] | None = None
         self._vnc_pool = VncResourcePool(
             displays=range(settings.vnc_display_min, settings.vnc_display_max + 1),
             vnc_ports=range(settings.vnc_port_min, settings.vnc_port_max + 1),
             ws_ports=range(settings.vnc_ws_port_min, settings.vnc_ws_port_max + 1),
         )
+        # Prewarmed resources ready to be claimed for faster session creation
+        self._prewarm_headless: list[_Prewarmed] = []
+        self._prewarm_vnc: list[_Prewarmed] = []
+        self._vnc_available = all(shutil.which(cmd) for cmd in ("Xvfb", "x11vnc", "websockify"))
+        if not self._vnc_available and settings.prewarm_vnc > 0:
+            LOGGER.info("VNC tooling not available; disabling VNC prewarm")
+        self._prewarm_headless_target = settings.prewarm_headless
+        self._prewarm_vnc_target = settings.prewarm_vnc if self._vnc_available else 0
+        self._start_url_wait = settings.start_url_wait
+        self._bootstrap_tasks: set[asyncio.Task[None]] = set()
 
     async def start(self) -> None:
         self._cleanup_task = asyncio.create_task(self._cleanup_loop(), name="camoufox-cleanup")
+        # Start prewarming loop if targets are non-zero
+        if self._prewarm_headless_target > 0 or self._prewarm_vnc_target > 0:
+            self._prewarm_task = asyncio.create_task(self._prewarm_loop(), name="camoufox-prewarm")
 
     async def close(self) -> None:
         if self._cleanup_task:
             self._cleanup_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._cleanup_task
+        if self._prewarm_task:
+            self._prewarm_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._prewarm_task
+        if self._bootstrap_tasks:
+            tasks = list(self._bootstrap_tasks)
+            self._bootstrap_tasks.clear()
+            for task in tasks:
+                task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.gather(*tasks, return_exceptions=True)
+        await self._close_prewarmed()
         await self._close_all()
 
     async def _close_all(self) -> None:
@@ -144,6 +186,19 @@ class SessionManager:
             self._sessions.clear()
         for handle in handles:
             await self._shutdown_handle(handle)
+
+    async def _close_prewarmed(self) -> None:
+        # Drain and close all prewarmed resources
+        async with self._lock:
+            headless = list(self._prewarm_headless)
+            vnc = list(self._prewarm_vnc)
+            self._prewarm_headless.clear()
+            self._prewarm_vnc.clear()
+        for item in headless + vnc:
+            try:
+                await item.server.close()
+            finally:
+                await self._stop_vnc_session(item.vnc_session)
 
     async def list_summaries(self) -> list[SessionSummary]:
         async with self._lock:
@@ -167,17 +222,31 @@ class SessionManager:
         vnc_session: VncSession | None = None
         if vnc_enabled:
             headless = False
-            vnc_session = await self._start_vnc_session()
+            if not self._vnc_available:
+                raise VNCUnavailableError("VNC is not supported on this runner")
+        # Try to acquire a prewarmed resource to avoid cold starts
+        prewarmed = await self._acquire_prewarmed(vnc=vnc_enabled, headless=headless)
         idle_ttl = payload.get("idle_ttl_seconds") or defaults.idle_ttl_seconds
         labels = payload.get("labels") or {}
         start_url = payload.get("start_url") or defaults.start_url
+        wait_override = payload.get("start_url_wait")
+        if wait_override in {"none", "domcontentloaded", "load"}:
+            start_url_wait = wait_override
+        else:
+            start_url_wait = self._start_url_wait
 
         try:
-            server = await self._launch_browser_server(
-                headless=headless,
-                vnc=vnc_enabled,
-                display=vnc_session.display if vnc_session else None,
-            )
+            if prewarmed is not None:
+                server = prewarmed.server
+                vnc_session = prewarmed.vnc_session
+            else:
+                if vnc_enabled:
+                    vnc_session = await self._start_vnc_session()
+                server = await self._launch_browser_server(
+                    headless=headless,
+                    vnc=vnc_enabled,
+                    display=vnc_session.display if vnc_session else None,
+                )
         except Exception:
             await self._stop_vnc_session(vnc_session)
             raise
@@ -194,10 +263,13 @@ class SessionManager:
             labels=labels,
             status=SessionStatus.READY,
             vnc_session=vnc_session,
+            start_url_wait=start_url_wait,
         )
-        await self._bootstrap_session(handle)
+        self._schedule_bootstrap(handle)
         async with self._lock:
             self._sessions[handle.id] = handle
+        # Trigger background prewarm top-up (best-effort)
+        asyncio.create_task(self._top_up_once(), name="camoufox-prewarm-kick").add_done_callback(lambda _: None)
         return handle
 
     async def delete(self, session_id: str) -> SessionHandle | None:
@@ -247,11 +319,13 @@ class SessionManager:
     async def _bootstrap_session(self, handle: SessionHandle) -> None:
         if not handle.start_url:
             return
+        if handle.start_url_wait == "none":
+            return
         try:
             browser = await self._playwright.firefox.connect(handle.server.ws_endpoint)
             context = await browser.new_context()
             page = await context.new_page()
-            await page.goto(handle.start_url, wait_until="load")
+            await page.goto(handle.start_url, wait_until=handle.start_url_wait)
             handle.controller_browser = browser
             handle.controller_context = context
             handle.controller_page = page
@@ -287,6 +361,56 @@ class SessionManager:
             self._build_vnc_payload(handle),
         )
 
+    async def _acquire_prewarmed(self, *, vnc: bool, headless: bool) -> _Prewarmed | None:
+        async with self._lock:
+            if vnc and self._prewarm_vnc:
+                return self._prewarm_vnc.pop()
+            if (not vnc) and headless and self._prewarm_headless:
+                return self._prewarm_headless.pop()
+            return None
+
+    async def _prewarm_loop(self) -> None:
+        # Periodically ensure we have the configured number of prewarmed resources
+        interval = self._settings.prewarm_check_interval_seconds
+        while True:
+            try:
+                await self._top_up_once()
+            except Exception as exc:  # pragma: no cover - defensive
+                LOGGER.warning("Prewarm loop error: %s", exc)
+            await asyncio.sleep(interval)
+
+    async def _top_up_once(self) -> None:
+        # Headless pool
+        target_headless = self._prewarm_headless_target
+        target_vnc = self._prewarm_vnc_target if self._vnc_available else 0
+        async with self._lock:
+            need_headless = max(0, target_headless - len(self._prewarm_headless))
+            need_vnc = max(0, target_vnc - len(self._prewarm_vnc))
+        for _ in range(need_headless):
+            try:
+                server = await self._launch_browser_server(headless=True, vnc=False, display=None)
+                item = _Prewarmed(server=server, vnc_session=None, headless=True)
+                async with self._lock:
+                    self._prewarm_headless.append(item)
+            except Exception as exc:  # pragma: no cover - defensive
+                LOGGER.warning("Failed to prewarm headless server: %s", exc)
+                break
+        for _ in range(need_vnc):
+            vnc_session: VncSession | None = None
+            try:
+                vnc_session = await self._start_vnc_session()
+                server = await self._launch_browser_server(headless=False, vnc=True, display=vnc_session.display)
+                item = _Prewarmed(server=server, vnc_session=vnc_session, headless=False)
+                async with self._lock:
+                    self._prewarm_vnc.append(item)
+            except Exception as exc:  # pragma: no cover - defensive
+                LOGGER.warning("Failed to prewarm VNC server: %s", exc)
+                # release possibly opened VNC session if server launch failed
+                if vnc_session is not None:
+                    with contextlib.suppress(Exception):
+                        await self._stop_vnc_session(vnc_session)
+                break
+
     def _build_vnc_payload(self, handle: SessionHandle) -> dict[str, Any]:
         if not handle.vnc or not handle.vnc_session:
             return {"ws": None, "http": None, "password_protected": False}
@@ -296,7 +420,26 @@ class SessionManager:
             "password_protected": False,
         }
 
+    def _schedule_bootstrap(self, handle: SessionHandle) -> None:
+        if not handle.start_url:
+            return
+        if handle.start_url_wait == "none":
+            return
+
+        task = asyncio.create_task(
+            self._bootstrap_session(handle),
+            name=f"camoufox-bootstrap:{handle.id}",
+        )
+        self._bootstrap_tasks.add(task)
+
+        def _cleanup(_: asyncio.Future[Any]) -> None:
+            self._bootstrap_tasks.discard(task)
+
+        task.add_done_callback(_cleanup)
+
     async def _start_vnc_session(self) -> VncSession:
+        if not self._vnc_available:
+            raise VNCUnavailableError("VNC is not supported on this runner")
         slot = await self._vnc_pool.acquire()
         display_name = f":{slot.display}"
         processes: list[aio_subprocess.Process] = []
@@ -650,4 +793,4 @@ async def _terminate_process(process: aio_subprocess.Process, *, kill: bool = Fa
         await asyncio.wait_for(process.wait(), timeout=5)
 
 
-__all__ = ["SessionManager", "SessionHandle"]
+__all__ = ["SessionManager", "SessionHandle", "VNCUnavailableError"]

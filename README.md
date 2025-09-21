@@ -151,8 +151,12 @@ kubectl apply -k deploy/k8s
 | `RUNNER_VNC_RESOLUTION` | `1920x1080x24` | Разрешение виртуального дисплея. |
 | `RUNNER_VNC_WEB_ASSETS_PATH` | `/usr/share/novnc` | Путь к статике noVNC; если отсутствует, websockify раздаёт только WebSocket. |
 | `RUNNER_VNC_LEGACY` | `0` | При значении `1` включает прежний режим с одним глобальным VNC-сервером (`vnc-start.sh`). |
+| `RUNNER_PREWARM_HEADLESS` | `1` | Количество тёплых резервов без VNC (используется headless=true). |
+| `RUNNER_PREWARM_VNC` | `1` | Количество тёплых резервов c VNC (Xvfb+x11vnc+websockify); автоматически отключается, если инструменты VNC недоступны в образе. |
+| `RUNNER_PREWARM_CHECK_INTERVAL_SECONDS` | `2.0` | Период проверки/дополнения пула тёплых резервов. |
+| `RUNNER_START_URL_WAIT` | `load` | Как долго ждать загрузку `start_url`: `none` (не грузить), `domcontentloaded`, `load`. При значении `none` навигация выполняется клиентом и стартовая вкладка останется пустой (включая VNC). |
 
-Порты и `DISPLAY` выделяются на каждую сессию. Убедитесь, что выбранные диапазоны проброшены наружу (Docker: `6900-6999:6900-6999`, `5900-5999:5900-5999`; Kubernetes — отдельный Ingress/Service или hostNetwork).
+Порты и `DISPLAY` выделяются на каждую сессию. Убедитесь, что выбранные диапазоны проброшены наружу (Docker: `6900-6999:6900-6999`, `5900-5999:5900-5999`; Kubernetes — отдельный Ingress/Service или hostNetwork). Для headless‑резервов prewarm используется `headless=true`.
 
 ### Worker
 
@@ -197,8 +201,8 @@ cd control-plane && pip install -e .[dev] && pytest
 
 - `GET /health` — состояние сервиса.
 - `GET /sessions` — список активных сессий.
-- `POST /sessions` — создание новой сессии.
-- `GET /sessions/{id}` — детали, включая VNC ссылки.
+- `POST /sessions` — создание новой сессии (поддерживает поля `start_url` и `start_url_wait`; для значений `domcontentloaded` и `load` раннер откроет URL асинхронно, при `none` страница не будет загружена автоматически — например, VNC покажет пустой профиль, пока вы не перейдёте на адрес вручную).
+- `GET /sessions/{id}` — детали, включая VNC ссылки и режим ожидания `start_url_wait`.
 - `POST /sessions/{id}/touch` — продлить TTL.
 - `DELETE /sessions/{id}` — завершение.
 
@@ -206,7 +210,7 @@ cd control-plane && pip install -e .[dev] && pytest
 
 - `GET /workers` — статусы всех воркеров.
 - `GET /sessions` — агрегированный список.
-- `POST /sessions` — создать сессию на выбранном воркере или через round-robin.
+- `POST /sessions` — создать сессию на выбранном воркере или через round-robin (прокидывает `start_url_wait` дальше к воркерам и runner'у).
 - `GET /sessions/{worker}/{id}` — детали.
 - `DELETE /sessions/{worker}/{id}` — завершение.
 

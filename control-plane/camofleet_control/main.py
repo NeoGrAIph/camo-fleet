@@ -109,6 +109,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                             ws_endpoint=public_ws_endpoint,
                             vnc_enabled=vnc_enabled,
                             vnc=vnc_payload,
+                            start_url_wait=item.get("start_url_wait"),
                         )
                     )
         return results

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -28,6 +28,7 @@ class SessionDescriptor(BaseModel):
     ws_endpoint: str
     vnc_enabled: bool | None = None
     vnc: dict[str, Any]
+    start_url_wait: Literal["none", "domcontentloaded", "load"] | None = None
 
 
 class CreateSessionRequest(BaseModel):
@@ -37,6 +38,7 @@ class CreateSessionRequest(BaseModel):
     labels: dict[str, str] | None = None
     start_url: str | None = None
     vnc: bool = False
+    start_url_wait: Literal["none", "domcontentloaded", "load"] | None = None
 
 
 class CreateSessionResponse(SessionDescriptor):

@@ -16,7 +16,7 @@ from .models import (
     SessionDeleteResponse,
     SessionDetail,
 )
-from .sessions import SessionManager
+from .sessions import SessionManager, VNCUnavailableError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -89,7 +89,10 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
         manager: SessionManager = Depends(get_manager),
     ) -> SessionDetail:
         payload = request.model_dump(exclude_unset=True)
-        handle = await manager.create(payload)
+        try:
+            handle = await manager.create(payload)
+        except VNCUnavailableError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
         return manager.detail_for(handle)
 
     @app.get("/sessions/{session_id}", response_model=SessionDetail)

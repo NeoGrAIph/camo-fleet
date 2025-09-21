@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { SessionItem, WorkerStatus } from './api';
+import type { SessionItem, StartUrlWait, WorkerStatus } from './api';
 import {
   createSession,
   deleteSession,
@@ -15,6 +15,7 @@ interface CreateFormState {
   startUrl: string;
   labels: string;
   vnc: boolean;
+  startUrlWait: StartUrlWait;
 }
 
 type ThemeMode = 'light' | 'dark';
@@ -31,7 +32,10 @@ const DEFAULT_FORM: CreateFormState = {
   startUrl: '',
   labels: '',
   vnc: false,
+  startUrlWait: 'load',
 };
+
+const START_URL_WAIT_OPTIONS: StartUrlWait[] = ['load', 'domcontentloaded', 'none'];
 
 const THEME_STORAGE_KEY = 'camofleet-ui-theme';
 
@@ -54,6 +58,18 @@ function formatIdle(seconds: number): string {
   if (!Number.isFinite(seconds)) return '—';
   const clamped = Math.max(0, Math.floor(seconds));
   return `${clamped}s`;
+}
+
+function formatStartUrlWait(mode: StartUrlWait | undefined | null): string {
+  switch (mode) {
+    case 'none':
+      return 'No wait';
+    case 'domcontentloaded':
+      return 'DOM ready';
+    case 'load':
+    default:
+      return 'Full load';
+  }
 }
 
 function remainingIdleSeconds(
@@ -208,6 +224,7 @@ export default function App(): JSX.Element {
         headless: form.headless,
         idle_ttl_seconds: form.idle,
         start_url: form.startUrl || undefined,
+        start_url_wait: form.startUrlWait,
         labels,
         vnc: form.vnc,
       };
@@ -397,6 +414,25 @@ export default function App(): JSX.Element {
             </label>
 
             <label>
+              Start URL wait
+              <select
+                value={form.startUrlWait}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    startUrlWait: event.target.value as StartUrlWait,
+                  }))
+                }
+              >
+                {START_URL_WAIT_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {formatStartUrlWait(option)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
               Labels (key=value, comma separated)
               <input
                 type="text"
@@ -453,6 +489,7 @@ export default function App(): JSX.Element {
                 <tbody>
                   {sessions.map((session) => {
                     const key = sessionKey(session);
+                    const startUrlWait = session.start_url_wait ?? 'load';
                     return (
                       <tr
                         key={key}
@@ -468,6 +505,9 @@ export default function App(): JSX.Element {
                           <span className="pill pill-muted">Camoufox</span>
                           {session.headless ? <span className="pill pill-muted">headless</span> : null}
                           {session.vnc_enabled ? <span className="pill pill-muted">VNC</span> : null}
+                          {startUrlWait !== 'load' ? (
+                            <span className="pill pill-muted">{formatStartUrlWait(startUrlWait)}</span>
+                          ) : null}
                         </td>
                         <td>{formatRelative(session.last_seen_at)}</td>
                         <td>{formatIdle(remainingIdleSeconds(session, now))}</td>
@@ -539,6 +579,10 @@ export default function App(): JSX.Element {
                   <div>
                     <dt>TTL left</dt>
                     <dd>{formatIdle(remainingIdleSeconds(selectedSession, now))}</dd>
+                  </div>
+                  <div>
+                    <dt>Start URL wait</dt>
+                    <dd>{formatStartUrlWait(selectedSession.start_url_wait ?? 'load')}</dd>
                   </div>
                   <div>
                     <dt>WebSocket endpoint</dt>

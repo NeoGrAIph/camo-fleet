@@ -31,6 +31,7 @@ class StubRunner:
             "idle_ttl_seconds": payload.get("idle_ttl_seconds", 300),
             "labels": payload.get("labels", {}),
             "vnc": payload.get("vnc", False),
+            "start_url_wait": payload.get("start_url_wait", "load"),
             "ws_endpoint": "ws://runner/session",
             "vnc_info": {"ws": None, "http": None, "password_protected": False},
         }
@@ -76,6 +77,7 @@ def test_create_and_list_session(stub_app: TestClient) -> None:
     body = response.json()
     assert body["browser"] == "camoufox"
     assert body["ws_endpoint"].endswith("/sess-1/ws")
+    assert body["start_url_wait"] == "load"
 
     list_resp = stub_app.get("/sessions")
     assert list_resp.status_code == 200

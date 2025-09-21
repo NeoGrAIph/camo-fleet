@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -38,6 +38,13 @@ class RunnerSettings(BaseSettings):
     vnc_resolution: str = "1920x1080x24"
     vnc_web_assets_path: str | None = "/usr/share/novnc"
     vnc_startup_timeout_seconds: Annotated[float, Field(gt=0.0, le=30.0)] = 5.0
+    start_url_wait: Literal["none", "domcontentloaded", "load"] = "load"
+
+    # Prewarm pool: keep a small number of ready-to-serve browser servers
+    # Separate targets for headless (no VNC) and VNC sessions
+    prewarm_headless: Annotated[int, Field(ge=0, le=64)] = 1
+    prewarm_vnc: Annotated[int, Field(ge=0, le=64)] = 1
+    prewarm_check_interval_seconds: Annotated[float, Field(gt=0.1, le=60.0)] = 2.0
 
     @model_validator(mode="after")
     def _validate_vnc_ranges(self) -> "RunnerSettings":

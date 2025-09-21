@@ -5,6 +5,8 @@ export interface WorkerStatus {
   supports_vnc: boolean;
 }
 
+export type StartUrlWait = 'none' | 'domcontentloaded' | 'load';
+
 export interface SessionItem {
   worker: string;
   id: string;
@@ -21,6 +23,7 @@ export interface SessionItem {
     http?: string | null;
     password_protected?: boolean;
   };
+  start_url_wait?: StartUrlWait;
 }
 
 const API_BASE =
@@ -53,6 +56,7 @@ export function createSession(payload: {
   start_url?: string;
   labels?: Record<string, string>;
   vnc?: boolean;
+  start_url_wait?: StartUrlWait;
 }): Promise<SessionItem> {
   return request<SessionItem>('/sessions', {
     method: 'POST',

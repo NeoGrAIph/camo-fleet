@@ -1,13 +1,22 @@
 FROM mcr.microsoft.com/playwright/python:v1.55.0-noble
 
-RUN apt-get update && \
+RUN echo ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true | debconf-set-selections && \
+    apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      ffmpeg tzdata locales ca-certificates fontconfig \
+      curl ffmpeg tzdata locales ca-certificates fontconfig fontconfig-config \
+      cabextract xfonts-utils \
       fonts-liberation fonts-dejavu-core fonts-dejavu-extra \
       fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji \
+      ttf-mscorefonts-installer \
       xvfb x11vnc websockify novnc procps \
     && rm -rf /var/lib/apt/lists/* \
     && fc-cache -f -v
+
+COPY docker/assets/fontconfig/99-windows-fonts.conf /etc/fonts/conf.d/99-windows-fonts.conf
+COPY docker/scripts/install-windows-fonts.sh /tmp/install-windows-fonts.sh
+RUN bash /tmp/install-windows-fonts.sh && rm /tmp/install-windows-fonts.sh && \
+    ln -sf /etc/fonts/conf.d/99-windows-fonts.conf /etc/fonts/local.conf && \
+    fc-cache -f -v
 
 RUN sed -i 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
     sed -i 's/# ru_RU.UTF-8 UTF-8/ru_RU.UTF-8 UTF-8/' /etc/locale.gen && \

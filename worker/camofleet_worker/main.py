@@ -160,6 +160,7 @@ def _to_worker_detail(app_state: AppState, data: dict) -> SessionDetail:
         labels=data.get("labels", {}),
         worker_id=app_state.worker_id,
         vnc_enabled=data.get("vnc", False),
+        start_url_wait=data.get("start_url_wait", "load"),
         ws_endpoint=f"/sessions/{data['id']}/ws",
         vnc=data.get("vnc_info", {}),
     )
