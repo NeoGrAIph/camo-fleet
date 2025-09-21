@@ -155,7 +155,6 @@ components:
           type: string
         vnc_enabled:
           type: boolean
-          nullable: true
           description: Whether a VNC preview is available for this session.
         vnc:
           type: object
