@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
 import websockets
 
-from shared import bridge_websocket
+from shared import __version__, bridge_websocket
 
 from .config import WorkerSettings, load_settings
 from .models import (
@@ -60,7 +60,7 @@ def get_app_state(app: FastAPI) -> AppState:
 
 def create_app(settings: WorkerSettings | None = None) -> FastAPI:
     cfg = settings or load_settings()
-    app = FastAPI(title="Camofleet Worker", version="0.2.0")
+    app = FastAPI(title="Camofleet Worker", version=__version__)
     allow_origins = cfg.cors_origins or ["*"]
     allow_all_origins = "*" in allow_origins
     cors_allow_origins = ["*"] if allow_all_origins else allow_origins

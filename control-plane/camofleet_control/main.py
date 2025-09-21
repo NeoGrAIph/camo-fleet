@@ -30,7 +30,7 @@ from prometheus_client import (
 )
 import websockets
 
-from shared import bridge_websocket
+from shared import __version__, bridge_websocket
 
 from .config import ControlSettings, WorkerConfig, load_settings
 from .models import (
@@ -135,7 +135,7 @@ def get_app_state(app: FastAPI) -> AppState:
 
 def create_app(settings: ControlSettings | None = None) -> FastAPI:
     cfg = settings or load_settings()
-    app = FastAPI(title="Camofleet Control", version="0.1.0")
+    app = FastAPI(title="Camofleet Control", version=__version__)
     allow_origins = cfg.cors_origins or ["*"]
     allow_all_origins = "*" in allow_origins
     cors_allow_origins = ["*"] if allow_all_origins else allow_origins

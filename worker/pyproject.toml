@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "camofleet-worker"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Lightweight Camouflage Fleet worker service"
 requires-python = ">=3.11"
 dependencies = [
@@ -26,3 +26,6 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["camofleet_worker"]
+
+[tool.setuptools.dynamic]
+version = {file = "../VERSION"}
