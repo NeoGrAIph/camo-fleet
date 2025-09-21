@@ -24,6 +24,7 @@ class RunnerSettings(BaseSettings):
 
     host: str = "0.0.0.0"
     port: int = 8070
+    cors_origins: list[str] = Field(default_factory=lambda: ["*"])
     metrics_endpoint: str = "/metrics"
     cleanup_interval: Annotated[int, Field(gt=0, le=3600)] = 15
     session_defaults: SessionDefaults = Field(default_factory=SessionDefaults)

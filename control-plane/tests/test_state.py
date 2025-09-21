@@ -1,19 +1,30 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
+from fastapi import HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from camofleet_control.config import ControlSettings, WorkerConfig
 from camofleet_control.main import (
     AppState,
     build_public_ws_endpoint,
     build_worker_ws_endpoint,
+    create_app,
     normalise_public_prefix,
 )
-from fastapi import HTTPException
 
 
 def make_settings(workers: list[WorkerConfig]) -> ControlSettings:
     return ControlSettings(workers=workers)
+
+
+def _get_cors_options(app: Any) -> dict[str, Any]:
+    for middleware in app.user_middleware:
+        if middleware.cls is CORSMiddleware:
+            return middleware.kwargs
+    raise AssertionError("CORS middleware not configured")
 
 
 def test_pick_worker_round_robin() -> None:
@@ -82,3 +93,19 @@ def test_build_worker_ws_endpoint() -> None:
         build_worker_ws_endpoint(worker, "sess")
         == "wss://worker.example/prefix/sessions/sess/ws"
     )
+
+
+def test_control_plane_cors_for_specific_origins() -> None:
+    settings = ControlSettings(cors_origins=["https://ui.example"])
+    app = create_app(settings)
+    options = _get_cors_options(app)
+    assert options["allow_origins"] == ["https://ui.example"]
+    assert options["allow_credentials"] is True
+
+
+def test_control_plane_cors_allows_any_origin_without_credentials() -> None:
+    settings = ControlSettings(cors_origins=["*"])
+    app = create_app(settings)
+    options = _get_cors_options(app)
+    assert options["allow_origins"] == ["*"]
+    assert options["allow_credentials"] is False

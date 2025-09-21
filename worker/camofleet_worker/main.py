@@ -45,10 +45,13 @@ def get_settings() -> WorkerSettings:
 def create_app(settings: WorkerSettings | None = None) -> FastAPI:
     cfg = settings or load_settings()
     app = FastAPI(title="Camofleet Worker", version="0.2.0")
+    allow_origins = cfg.cors_origins or ["*"]
+    allow_all_origins = "*" in allow_origins
+    cors_allow_origins = ["*"] if allow_all_origins else allow_origins
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
+        allow_origins=cors_allow_origins,
+        allow_credentials=not allow_all_origins,
         allow_methods=["*"],
         allow_headers=["*"],
     )

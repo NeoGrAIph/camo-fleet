@@ -25,6 +25,8 @@ class WorkerSettings(BaseSettings):
     port: int = 8080
     shutdown_timeout: int = 10
 
+    cors_origins: list[str] = Field(default_factory=lambda: ["*"])
+
     metrics_endpoint: str = "/metrics"
 
     session_defaults: SessionDefaults = Field(default_factory=SessionDefaults)

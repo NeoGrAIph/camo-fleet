@@ -151,26 +151,49 @@ components:
             type: string
         ws_endpoint:
           type: string
+        vnc_enabled:
+          type: boolean
+          nullable: true
+          description: Whether a VNC preview is available for this session.
         vnc:
           type: object
           additionalProperties: true
+        start_url_wait:
+          type: string
+          nullable: true
+          description: |
+            How long to wait for the initial navigation. One of `none`,
+            `domcontentloaded`, `load`.
+          enum: [none, domcontentloaded, load]
       required: [worker, id, status, created_at, last_seen_at, browser, headless, idle_ttl_seconds, labels, ws_endpoint, vnc]
     CreateSessionRequest:
       type: object
       properties:
         worker:
           type: string
-        browser:
-          type: string
-          enum: [chromium, firefox, webkit]
         headless:
           type: boolean
         idle_ttl_seconds:
           type: integer
           minimum: 30
           maximum: 3600
+        start_url:
+          type: string
+          maxLength: 1024
+          description: Optional URL to open once the session is ready.
+        start_url_wait:
+          type: string
+          description: |
+            Controls whether the runner should automatically open the
+            `start_url` and how long to wait for it: `none`
+            (don't navigate), `domcontentloaded`, `load`.
+          enum: [none, domcontentloaded, load]
         labels:
           type: object
           additionalProperties:
             type: string
+        vnc:
+          type: boolean
+          default: false
+          description: Request a session with an attached VNC preview.
       additionalProperties: false
