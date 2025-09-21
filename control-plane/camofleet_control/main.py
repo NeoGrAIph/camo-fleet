@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 from collections.abc import Awaitable, Callable
 from time import perf_counter
@@ -11,7 +10,6 @@ from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 import httpx
-import websockets
 from fastapi import (
     Depends,
     FastAPI,
@@ -19,7 +17,6 @@ from fastapi import (
     Request,
     Response,
     WebSocket,
-    WebSocketDisconnect,
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,7 +28,9 @@ from prometheus_client import (
     Histogram,
     generate_latest,
 )
-from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
+import websockets
+
+from shared import bridge_websocket
 
 from .config import ControlSettings, WorkerConfig, load_settings
 from .models import (
@@ -331,36 +330,17 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         websocket_labels = {"worker": worker.name}
         state.active_websockets.labels(**websocket_labels).inc()
         try:
-            async with websockets.connect(
-                upstream_endpoint,
-                ping_interval=None,
-                open_timeout=cfg.request_timeout,
-            ) as upstream:
-                client_to_upstream = asyncio.create_task(
-                    _forward_client_to_upstream(websocket, upstream),
-                    name="control-bridge-client->worker",
-                )
-                upstream_to_client = asyncio.create_task(
-                    _forward_upstream_to_client(websocket, upstream),
-                    name="control-bridge-worker->client",
-                )
-                done, pending = await asyncio.wait(
-                    {client_to_upstream, upstream_to_client},
-                    return_when=asyncio.FIRST_EXCEPTION,
-                )
-                for task in pending:
-                    task.cancel()
-                for task in done:
-                    exc = task.exception()
-                    if exc:
-                        raise exc
-        except (ConnectionClosedError, ConnectionClosedOK, WebSocketDisconnect):
-            with contextlib.suppress(RuntimeError):
-                await websocket.close()
-        except Exception as exc:  # pragma: no cover - defensive logging path
-            LOGGER.warning("WebSocket proxy failure for worker %s: %s", worker.name, exc)
-            with contextlib.suppress(RuntimeError):
-                await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
+            await bridge_websocket(
+                websocket,
+                lambda: websockets.connect(
+                    upstream_endpoint,
+                    ping_interval=None,
+                    open_timeout=cfg.request_timeout,
+                ),
+                logger=LOGGER,
+                log_context=f"control-plane proxy to worker {worker.name}",
+                error_close_code=status.WS_1011_INTERNAL_ERROR,
+            )
         finally:
             state.active_websockets.labels(**websocket_labels).dec()
 
@@ -446,42 +426,6 @@ def normalise_public_prefix(prefix: str) -> str:
     if not value.startswith("/"):
         value = f"/{value}"
     return value.rstrip("/")
-
-
-async def _forward_client_to_upstream(
-    websocket: WebSocket, upstream: websockets.WebSocketClientProtocol
-) -> None:
-    """Forward client messages to the upstream worker WebSocket."""
-
-    try:
-        while True:
-            message = await websocket.receive()
-            message_type = message.get("type")
-            if message_type == "websocket.disconnect":
-                await upstream.close()
-                break
-            if "text" in message and message["text"] is not None:
-                await upstream.send(message["text"])
-            elif "bytes" in message and message["bytes"] is not None:
-                await upstream.send(message["bytes"])
-    except WebSocketDisconnect:
-        await upstream.close()
-
-
-async def _forward_upstream_to_client(
-    websocket: WebSocket, upstream: websockets.WebSocketClientProtocol
-) -> None:
-    """Forward upstream worker messages to the client WebSocket."""
-
-    try:
-        async for data in upstream:
-            if isinstance(data, bytes | bytearray):
-                await websocket.send_bytes(data)
-            else:
-                await websocket.send_text(data)
-    finally:
-        with contextlib.suppress(RuntimeError):
-            await websocket.close()
 
 
 __all__ = ["create_app"]

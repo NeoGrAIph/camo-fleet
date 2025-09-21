@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import logging
 import uuid
 
 import httpx
-import websockets
 from fastapi import (
     Depends,
     FastAPI,
@@ -16,12 +13,13 @@ from fastapi import (
     Request,
     Response,
     WebSocket,
-    WebSocketDisconnect,
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
-from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
+import websockets
+
+from shared import bridge_websocket
 
 from .config import WorkerSettings, load_settings
 from .models import (
@@ -176,7 +174,13 @@ def create_app(settings: WorkerSettings | None = None) -> FastAPI:
         if not upstream_endpoint:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
-        await _bridge_websocket(websocket, upstream_endpoint)
+        await bridge_websocket(
+            websocket,
+            lambda: websockets.connect(upstream_endpoint, ping_interval=None),
+            logger=LOGGER,
+            log_context=f"worker bridge for session {session_id}",
+            error_close_code=status.WS_1011_INTERNAL_ERROR,
+        )
 
     return app
 
@@ -197,74 +201,6 @@ def _to_worker_detail(app_state: AppState, data: dict) -> SessionDetail:
         ws_endpoint=f"/sessions/{data['id']}/ws",
         vnc=data.get("vnc_info", {}),
     )
-
-
-async def _bridge_websocket(websocket: WebSocket, upstream_endpoint: str) -> None:
-    """Stream messages bidirectionally between FastAPI WebSocket and upstream endpoint."""
-
-    try:
-        async with websockets.connect(upstream_endpoint, ping_interval=None) as upstream:
-            client_to_upstream = asyncio.create_task(
-                _forward_client_to_upstream(websocket, upstream),
-                name="camoufox-bridge-client->upstream",
-            )
-            upstream_to_client = asyncio.create_task(
-                _forward_upstream_to_client(websocket, upstream),
-                name="camoufox-bridge-upstream->client",
-            )
-            done, pending = await asyncio.wait(
-                {client_to_upstream, upstream_to_client},
-                return_when=asyncio.FIRST_EXCEPTION,
-            )
-            for task in pending:
-                task.cancel()
-            for task in done:
-                exc = task.exception()
-                if exc:
-                    raise exc
-    except (ConnectionClosedError, ConnectionClosedOK, WebSocketDisconnect):
-        with contextlib.suppress(RuntimeError):
-            await websocket.close()
-    except Exception as exc:  # pragma: no cover - defensive logging path
-        LOGGER.warning("WebSocket bridge failure: %s", exc)
-        with contextlib.suppress(RuntimeError):
-            await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
-
-
-async def _forward_client_to_upstream(
-    websocket: WebSocket, upstream: websockets.WebSocketClientProtocol
-) -> None:
-    """Forward messages received from the UI WebSocket to the upstream server."""
-
-    try:
-        while True:
-            message = await websocket.receive()
-            message_type = message.get("type")
-            if message_type == "websocket.disconnect":
-                await upstream.close()
-                break
-            if "text" in message and message["text"] is not None:
-                await upstream.send(message["text"])
-            elif "bytes" in message and message["bytes"] is not None:
-                await upstream.send(message["bytes"])
-    except WebSocketDisconnect:
-        await upstream.close()
-
-
-async def _forward_upstream_to_client(
-    websocket: WebSocket, upstream: websockets.WebSocketClientProtocol
-) -> None:
-    """Forward messages received from the upstream server to the UI WebSocket."""
-
-    try:
-        async for data in upstream:
-            if isinstance(data, bytes | bytearray):
-                await websocket.send_bytes(data)
-            else:
-                await websocket.send_text(data)
-    finally:
-        with contextlib.suppress(RuntimeError):
-            await websocket.close()
 
 
 __all__ = ["create_app"]
