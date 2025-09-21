@@ -41,4 +41,3 @@ class RunnerClient:
         response = await self._client.post(f"/sessions/{session_id}/touch")
         response.raise_for_status()
         return response.json()
-

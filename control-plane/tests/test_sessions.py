@@ -4,10 +4,9 @@ import asyncio
 from contextlib import asynccontextmanager
 
 import pytest
-from httpx import ASGITransport, AsyncClient
-
 from camofleet_control.config import ControlSettings, WorkerConfig
 from camofleet_control.main import create_app
+from httpx import ASGITransport, AsyncClient
 
 
 @pytest.fixture

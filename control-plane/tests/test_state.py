@@ -3,9 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from fastapi import HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-
 from camofleet_control.config import ControlSettings, WorkerConfig
 from camofleet_control.main import (
     AppState,
@@ -14,6 +11,8 @@ from camofleet_control.main import (
     create_app,
     normalise_public_prefix,
 )
+from fastapi import HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 
 def make_settings(workers: list[WorkerConfig]) -> ControlSettings:
@@ -84,19 +83,12 @@ def test_build_public_ws_endpoint() -> None:
 
 def test_build_worker_ws_endpoint() -> None:
     worker = WorkerConfig(name="a", url="http://worker:8080")
-    assert (
-        build_worker_ws_endpoint(worker, "sess")
-        == "ws://worker:8080/sessions/sess/ws"
-    )
+    assert build_worker_ws_endpoint(worker, "sess") == "ws://worker:8080/sessions/sess/ws"
     worker = WorkerConfig(name="b", url="https://worker.example")
-    assert (
-        build_worker_ws_endpoint(worker, "sess")
-        == "wss://worker.example/sessions/sess/ws"
-    )
+    assert build_worker_ws_endpoint(worker, "sess") == "wss://worker.example/sessions/sess/ws"
     worker = WorkerConfig(name="c", url="https://worker.example/prefix")
     assert (
-        build_worker_ws_endpoint(worker, "sess")
-        == "wss://worker.example/prefix/sessions/sess/ws"
+        build_worker_ws_endpoint(worker, "sess") == "wss://worker.example/prefix/sessions/sess/ws"
     )
 
 
