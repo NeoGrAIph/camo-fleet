@@ -33,6 +33,11 @@ Camo-fleet/
 
 ## Локальный запуск
 
+Все сервисы загружают переменные окружения из файла `.env`, расположенного в корне репозитория. Такой
+механизм одинаково работает как при запуске модулей напрямую (`python -m camofleet_worker`,
+`python -m camofleet_control`, `python -m camoufox_runner`), так и внутри Docker/Compose окружений, где
+корень проекта примонтирован в контейнер.
+
 ### Полностью в Docker (без Python на хосте)
 
 1. Установите [Docker](https://docs.docker.com/get-docker/) и Docker Compose.

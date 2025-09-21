@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated
 
 from pydantic import BaseModel, Field
@@ -16,10 +17,13 @@ class SessionDefaults(BaseModel):
     headless: bool = False
 
 
+ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+
+
 class WorkerSettings(BaseSettings):
     """Runtime settings for the worker service."""
 
-    model_config = SettingsConfigDict(env_prefix="WORKER_", env_file=".env")
+    model_config = SettingsConfigDict(env_prefix="WORKER_", env_file=ENV_FILE)
 
     host: str = "0.0.0.0"
     port: int = 8080
