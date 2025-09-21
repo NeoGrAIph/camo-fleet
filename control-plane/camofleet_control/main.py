@@ -91,6 +91,10 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                     continue
                 for item in response.json():
                     public_ws_endpoint = build_public_ws_endpoint(cfg, worker.name, item["id"])
+                    vnc_payload = item.get("vnc", item.get("vnc_info", {}))
+                    vnc_enabled = item.get("vnc_enabled")
+                    if vnc_enabled is None and vnc_payload:
+                        vnc_enabled = bool(vnc_payload.get("http") or vnc_payload.get("ws"))
                     results.append(
                         SessionDescriptor(
                             worker=worker.name,
@@ -103,8 +107,8 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                             idle_ttl_seconds=item["idle_ttl_seconds"],
                             labels=item.get("labels", {}),
                             ws_endpoint=public_ws_endpoint,
-                            vnc_enabled=item.get("vnc_enabled"),
-                            vnc=item.get("vnc", item.get("vnc_info", {})),
+                            vnc_enabled=vnc_enabled,
+                            vnc=vnc_payload,
                         )
                     )
         return results

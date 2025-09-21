@@ -47,7 +47,7 @@ Camo-fleet/
    - Control-plane API: `http://localhost:9000`
    - Headless worker API: `http://localhost:8080`
    - VNC worker API: `http://localhost:8081`
-   - noVNC: `http://localhost:6900` (`ws://localhost:6900`)
+   - noVNC: `http://localhost:69xx` (`ws://localhost:69xx`) — порт выдаётся динамически из диапазона 6900–6999
 4. Тесты также можно прогнать внутри контейнеров:
    ```bash
    docker compose -f docker-compose.dev.yml run --rm --entrypoint pytest worker
@@ -104,7 +104,7 @@ Camo-fleet/
 3. После старта сервисов:
    - UI: `http://localhost:8080`
    - Control-plane API: `http://localhost:9000`
-   - noVNC: ссылки появляются в UI; базовый адрес `http://localhost:6900`
+   - noVNC: предпросмотр в UI; фактический порт выбирается автоматически из диапазона `6900-6999`
 4. Для остановки окружения выполните:
    ```powershell
    docker compose down
@@ -138,6 +138,21 @@ kubectl apply -k deploy/k8s
 В результате будут созданы namespace `camofleet`, деплойменты/сервисы для всех компонентов и ingress с TLS.
 
 ## Переменные окружения
+
+### Runner
+
+| Переменная | Значение по умолчанию | Описание |
+| ---------- | --------------------- | -------- |
+| `RUNNER_VNC_WS_BASE` | `None` | Базовый адрес (со схемой и хостом) для генерации WebSocket URL предпросмотра. Порт будет подменён на выделенный для конкретной сессии. |
+| `RUNNER_VNC_HTTP_BASE` | `None` | Аналогично `RUNNER_VNC_WS_BASE`, но для noVNC iframe (`/vnc.html`). |
+| `RUNNER_VNC_DISPLAY_MIN` / `RUNNER_VNC_DISPLAY_MAX` | `100` / `199` | Диапазон виртуальных `DISPLAY`, выделяемых Xvfb. |
+| `RUNNER_VNC_PORT_MIN` / `RUNNER_VNC_PORT_MAX` | `5900` / `5999` | Диапазон TCP-портов для `x11vnc`. |
+| `RUNNER_VNC_WS_PORT_MIN` / `RUNNER_VNC_WS_PORT_MAX` | `6900` / `6999` | Диапазон TCP-портов для websockify/noVNC. |
+| `RUNNER_VNC_RESOLUTION` | `1920x1080x24` | Разрешение виртуального дисплея. |
+| `RUNNER_VNC_WEB_ASSETS_PATH` | `/usr/share/novnc` | Путь к статике noVNC; если отсутствует, websockify раздаёт только WebSocket. |
+| `RUNNER_VNC_LEGACY` | `0` | При значении `1` включает прежний режим с одним глобальным VNC-сервером (`vnc-start.sh`). |
+
+Порты и `DISPLAY` выделяются на каждую сессию. Убедитесь, что выбранные диапазоны проброшены наружу (Docker: `6900-6999:6900-6999`, `5900-5999:5900-5999`; Kubernetes — отдельный Ingress/Service или hostNetwork).
 
 ### Worker
 

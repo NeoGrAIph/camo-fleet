@@ -34,8 +34,9 @@ kubectl apply -k deploy/k8s
 ```
 
 This creates deployments for headless и VNC воркеров (каждый — пара контейнеров worker+runner),
-контрольную плоскость, UI и Ingress. В сервисе `camofleet-worker-vnc` дополнительно открывается
-порт 6900 для noVNC.
+контрольную плоскость, UI и Ingress. Для noVNC runner поднимает отдельный порт на каждую сессию
+(по умолчанию диапазон 6900–6999), поэтому для внешнего доступа потребуется проксировать диапазон
+портов либо задействовать hostNetwork.
 
 ## Environment variables
 
@@ -68,6 +69,7 @@ Example value:
   }
 ]
 ```
+Runner автоматически подменяет порт в этих базовых URL на выделенный для конкретной VNC-сессии.
 
 ### UI
 

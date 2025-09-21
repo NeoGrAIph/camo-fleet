@@ -52,11 +52,21 @@ function formatRelative(date: string): string {
 
 function formatIdle(seconds: number): string {
   if (!Number.isFinite(seconds)) return '—';
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = (minutes / 60).toFixed(1);
-  return `${hours}h`;
+  const clamped = Math.max(0, Math.floor(seconds));
+  return `${clamped}s`;
+}
+
+function remainingIdleSeconds(
+  session: Pick<SessionItem, 'last_seen_at' | 'idle_ttl_seconds'>,
+  nowMs: number,
+): number {
+  const lastSeen = new Date(session.last_seen_at).valueOf();
+  if (Number.isNaN(lastSeen)) {
+    return Math.max(0, Math.floor(session.idle_ttl_seconds));
+  }
+  const elapsedSeconds = Math.max(0, Math.floor((nowMs - lastSeen) / 1000));
+  const remaining = Math.floor(session.idle_ttl_seconds - elapsedSeconds);
+  return remaining > 0 ? remaining : 0;
 }
 
 function statusBadge(status: string): string {
@@ -121,6 +131,7 @@ export default function App(): JSX.Element {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionState, setActionState] = useState<ActionState>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -148,6 +159,12 @@ export default function App(): JSX.Element {
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     if (selectedKey && !sessions.some((item) => sessionKey(item) === selectedKey)) {
       setSelectedKey(null);
     }
@@ -161,6 +178,11 @@ export default function App(): JSX.Element {
   const selectedSession = useMemo(
     () => sessions.find((item) => sessionKey(item) === selectedKey) ?? null,
     [sessions, selectedKey],
+  );
+
+  const selectedSessionKey = useMemo(
+    () => (selectedSession ? sessionKey(selectedSession) : null),
+    [selectedSession],
   );
 
   const stats = useMemo(() => {
@@ -448,7 +470,7 @@ export default function App(): JSX.Element {
                           {session.vnc_enabled ? <span className="pill pill-muted">VNC</span> : null}
                         </td>
                         <td>{formatRelative(session.last_seen_at)}</td>
-                        <td>{formatIdle(session.idle_ttl_seconds)}</td>
+                        <td>{formatIdle(remainingIdleSeconds(session, now))}</td>
                       </tr>
                     );
                   })}
@@ -515,6 +537,10 @@ export default function App(): JSX.Element {
                     <dd>{formatRelative(selectedSession.last_seen_at)}</dd>
                   </div>
                   <div>
+                    <dt>TTL left</dt>
+                    <dd>{formatIdle(remainingIdleSeconds(selectedSession, now))}</dd>
+                  </div>
+                  <div>
                     <dt>WebSocket endpoint</dt>
                     <dd>
                       <button
@@ -574,6 +600,7 @@ export default function App(): JSX.Element {
                   {selectedSession.vnc?.http ? (
                     <iframe
                       title="Browser session"
+                      key={selectedSessionKey ?? 'no-session'}
                       src={buildVncEmbedUrl(selectedSession.vnc.http) ?? undefined}
                       className="vnc-frame"
                     />
