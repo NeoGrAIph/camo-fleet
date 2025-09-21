@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 
 from camofleet_worker.config import WorkerSettings
@@ -66,6 +67,13 @@ def stub_app() -> TestClient:
     return client
 
 
+def _get_cors_options(app: Any) -> dict[str, Any]:
+    for middleware in app.user_middleware:
+        if middleware.cls is CORSMiddleware:
+            return middleware.kwargs
+    raise AssertionError("CORS middleware not configured")
+
+
 def test_create_session_rejects_vnc_when_not_supported(stub_app: TestClient) -> None:
     response = stub_app.post("/sessions", json={"vnc": True})
     assert response.status_code == 400
@@ -85,6 +93,22 @@ def test_create_and_list_session(stub_app: TestClient) -> None:
     assert len(items) == 1
     assert items[0]["id"] == "sess-1"
     assert stub_app.runner_stub.created[0]["start_url"] == "https://example.org"
+
+
+def test_cors_allows_specific_origins() -> None:
+    settings = WorkerSettings(cors_origins=["https://app.example"])
+    app = create_app(settings)
+    options = _get_cors_options(app)
+    assert options["allow_origins"] == ["https://app.example"]
+    assert options["allow_credentials"] is True
+
+
+def test_cors_allows_any_origin_without_credentials() -> None:
+    settings = WorkerSettings(cors_origins=["*"])
+    app = create_app(settings)
+    options = _get_cors_options(app)
+    assert options["allow_origins"] == ["*"]
+    assert options["allow_credentials"] is False
 
 
 def test_get_session_returns_detail(stub_app: TestClient) -> None:
