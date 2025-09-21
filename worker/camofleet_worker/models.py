@@ -27,6 +27,8 @@ class SessionCreateRequest(BaseModel):
     start_url_wait: Literal["none", "domcontentloaded", "load"] | None = None
     labels: dict[str, str] | None = None
     vnc: bool = False
+    # Optional per-session proxy override (Playwright format)
+    proxy: dict[str, str] | None = None
 
 
 class SessionSummary(BaseModel):

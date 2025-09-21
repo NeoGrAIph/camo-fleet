@@ -176,7 +176,8 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                 if vnc_enabled is None and vnc_payload:
                     vnc_enabled = bool(vnc_payload.get("http") or vnc_payload.get("ws"))
                 # Apply optional public VNC base overrides if configured on the worker
-                vnc_payload = apply_vnc_overrides(worker, vnc_payload) if isinstance(vnc_payload, dict) else vnc_payload
+                if isinstance(vnc_payload, dict):
+                    vnc_payload = apply_vnc_overrides(worker, vnc_payload)
                 sessions.append(
                     SessionDescriptor(
                         worker=worker.name,

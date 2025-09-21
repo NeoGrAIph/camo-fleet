@@ -197,4 +197,19 @@ components:
           type: boolean
           default: false
           description: Request a session with an attached VNC preview.
+        proxy:
+          type: object
+          description: Optional per-session proxy override (Playwright format).
+          properties:
+            server:
+              type: string
+              description: Proxy server URL (e.g. http://host:port or socks5://host:port)
+            username:
+              type: string
+            password:
+              type: string
+            bypass:
+              type: string
+              description: Comma-separated hosts to bypass proxy
+          additionalProperties: false
       additionalProperties: false

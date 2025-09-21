@@ -39,6 +39,8 @@ class CreateSessionRequest(BaseModel):
     start_url: str | None = None
     vnc: bool = False
     start_url_wait: Literal["none", "domcontentloaded", "load"] | None = None
+    # Optional per-session proxy override (Playwright-compatible)
+    proxy: dict[str, str] | None = None
 
 
 class CreateSessionResponse(SessionDescriptor):

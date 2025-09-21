@@ -219,13 +219,17 @@ class SessionManager:
         if headless is None:
             headless = defaults.headless
         vnc_enabled = bool(payload.get("vnc", False))
+        proxy_override = payload.get("proxy") or None
         vnc_session: VncSession | None = None
         if vnc_enabled:
             headless = False
             if not self._vnc_available:
                 raise VNCUnavailableError("VNC is not supported on this runner")
         # Try to acquire a prewarmed resource to avoid cold starts
-        prewarmed = await self._acquire_prewarmed(vnc=vnc_enabled, headless=headless)
+        # If a per-session proxy override is requested, avoid using a prewarmed server
+        prewarmed = None
+        if not proxy_override:
+            prewarmed = await self._acquire_prewarmed(vnc=vnc_enabled, headless=headless)
         idle_ttl = payload.get("idle_ttl_seconds") or defaults.idle_ttl_seconds
         labels = payload.get("labels") or {}
         start_url = payload.get("start_url") or defaults.start_url
@@ -246,6 +250,7 @@ class SessionManager:
                     headless=headless,
                     vnc=vnc_enabled,
                     display=vnc_session.display if vnc_session else None,
+                    override_proxy=proxy_override,
                 )
         except Exception:
             await self._stop_vnc_session(vnc_session)
@@ -663,6 +668,7 @@ class SessionManager:
         headless: bool,
         vnc: bool,
         display: str | None,
+        override_proxy: dict[str, Any] | None = None,
     ) -> "_SubprocessBrowserServer":
         opts = launch_options(headless=headless)
         env_vars = {k: v for k, v in (opts.get("env") or {}).items() if v is not None}
@@ -677,7 +683,11 @@ class SessionManager:
             config["executablePath"] = executable_path
         if prefs := opts.get("firefox_user_prefs"):
             config["firefoxUserPrefs"] = prefs
-        if proxy := opts.get("proxy"):
+        # Prefer an explicit per-session proxy override if provided; otherwise use
+        # proxy configuration supplied by Camoufox default launch options.
+        if override_proxy:
+            config["proxy"] = override_proxy
+        elif proxy := opts.get("proxy"):
             config["proxy"] = proxy
         if opts.get("ignore_default_args") is not None:
             config["ignoreDefaultArgs"] = opts["ignore_default_args"]
