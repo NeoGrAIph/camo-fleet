@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+from contextlib import asynccontextmanager
+
 import pytest
 
 from camofleet_control.config import ControlSettings, WorkerConfig
@@ -7,6 +10,7 @@ from camofleet_control.main import (
     AppState,
     build_public_ws_endpoint,
     build_worker_ws_endpoint,
+    create_app,
     normalise_public_prefix,
 )
 from fastapi import HTTPException
@@ -82,3 +86,81 @@ def test_build_worker_ws_endpoint() -> None:
         build_worker_ws_endpoint(worker, "sess")
         == "wss://worker.example/prefix/sessions/sess/ws"
     )
+
+
+def test_list_sessions_queries_workers_concurrently(monkeypatch: pytest.MonkeyPatch) -> None:
+    workers = [
+        WorkerConfig(name="worker-a", url="http://worker-a"),
+        WorkerConfig(name="worker-b", url="http://worker-b"),
+    ]
+    settings = ControlSettings(workers=workers, public_api_prefix="/")
+    state = AppState(settings)
+
+    start_events = {worker.name: asyncio.Event() for worker in workers}
+    proceed_event = asyncio.Event()
+
+    class DummyResponse:
+        def __init__(self, payload: list[dict]) -> None:
+            self._payload = payload
+            self.status_code = 200
+
+        def json(self) -> list[dict]:
+            return self._payload
+
+        def raise_for_status(self) -> None:
+            return None
+
+    @asynccontextmanager
+    async def fake_worker_client(worker: WorkerConfig, cfg: ControlSettings):
+        class DummyClient:
+            async def list_sessions(self) -> DummyResponse:
+                start_events[worker.name].set()
+                await proceed_event.wait()
+                return DummyResponse(
+                    [
+                        {
+                            "id": f"{worker.name}-session",
+                            "status": "running",
+                            "created_at": "2024-01-01T00:00:00Z",
+                            "last_seen_at": "2024-01-01T00:00:00Z",
+                            "headless": False,
+                            "idle_ttl_seconds": 30,
+                            "labels": {"worker": worker.name},
+                            "browser": "camoufox",
+                            "vnc": {},
+                            "start_url_wait": None,
+                        }
+                    ]
+                )
+
+            async def close(self) -> None:
+                return None
+
+        yield DummyClient()
+
+    monkeypatch.setattr("camofleet_control.main.worker_client", fake_worker_client)
+
+    async def exercise() -> None:
+        app = create_app(settings)
+        list_sessions_route = next(
+            route
+            for route in app.routes
+            if getattr(route, "path", None) == "/sessions" and "GET" in getattr(route, "methods", set())
+        )
+        list_sessions_endpoint = list_sessions_route.endpoint
+
+        list_task = asyncio.create_task(list_sessions_endpoint(state=state))
+
+        await asyncio.wait_for(
+            asyncio.gather(*(event.wait() for event in start_events.values())),
+            timeout=0.5,
+        )
+        proceed_event.set()
+        sessions = await list_task
+
+        assert sorted((session.worker, session.id) for session in sessions) == [
+            ("worker-a", "worker-a-session"),
+            ("worker-b", "worker-b-session"),
+        ]
+
+    asyncio.run(exercise())

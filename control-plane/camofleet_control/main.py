@@ -80,38 +80,58 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
 
     @app.get("/sessions", response_model=list[SessionDescriptor])
     async def list_sessions(state: AppState = Depends(get_state)) -> list[SessionDescriptor]:
-        results: list[SessionDescriptor] = []
-        for worker in state.list_workers():
-            async with worker_client(worker, cfg) as client:
-                try:
-                    response = await client.list_sessions()
-                    response.raise_for_status()
-                except httpx.HTTPError as exc:  # pragma: no cover - network failure
-                    LOGGER.warning("Failed to query worker %s: %s", worker.name, exc)
-                    continue
-                for item in response.json():
-                    public_ws_endpoint = build_public_ws_endpoint(cfg, worker.name, item["id"])
-                    vnc_payload = item.get("vnc", item.get("vnc_info", {}))
-                    vnc_enabled = item.get("vnc_enabled")
-                    if vnc_enabled is None and vnc_payload:
-                        vnc_enabled = bool(vnc_payload.get("http") or vnc_payload.get("ws"))
-                    results.append(
-                        SessionDescriptor(
-                            worker=worker.name,
-                            id=item["id"],
-                            status=item["status"],
-                            created_at=item["created_at"],
-                            last_seen_at=item["last_seen_at"],
-                            browser=item.get("browser", "camoufox"),
-                            headless=item["headless"],
-                            idle_ttl_seconds=item["idle_ttl_seconds"],
-                            labels=item.get("labels", {}),
-                            ws_endpoint=public_ws_endpoint,
-                            vnc_enabled=vnc_enabled,
-                            vnc=vnc_payload,
-                            start_url_wait=item.get("start_url_wait"),
+        workers = state.list_workers()
+
+        semaphore = None
+        concurrency_limit = getattr(cfg, "max_concurrent_worker_requests", None)
+        if concurrency_limit:
+            semaphore = asyncio.Semaphore(concurrency_limit)
+
+        async def _fetch_sessions(worker: WorkerConfig) -> list[SessionDescriptor]:
+            async def _query_worker() -> list[SessionDescriptor]:
+                async with worker_client(worker, cfg) as client:
+                    try:
+                        response = await client.list_sessions()
+                        response.raise_for_status()
+                    except httpx.HTTPError as exc:  # pragma: no cover - network failure
+                        LOGGER.warning("Failed to query worker %s: %s", worker.name, exc)
+                        return []
+
+                    sessions: list[SessionDescriptor] = []
+                    for item in response.json():
+                        public_ws_endpoint = build_public_ws_endpoint(cfg, worker.name, item["id"])
+                        vnc_payload = item.get("vnc", item.get("vnc_info", {}))
+                        vnc_enabled = item.get("vnc_enabled")
+                        if vnc_enabled is None and vnc_payload:
+                            vnc_enabled = bool(vnc_payload.get("http") or vnc_payload.get("ws"))
+                        sessions.append(
+                            SessionDescriptor(
+                                worker=worker.name,
+                                id=item["id"],
+                                status=item["status"],
+                                created_at=item["created_at"],
+                                last_seen_at=item["last_seen_at"],
+                                browser=item.get("browser", "camoufox"),
+                                headless=item["headless"],
+                                idle_ttl_seconds=item["idle_ttl_seconds"],
+                                labels=item.get("labels", {}),
+                                ws_endpoint=public_ws_endpoint,
+                                vnc_enabled=vnc_enabled,
+                                vnc=vnc_payload,
+                                start_url_wait=item.get("start_url_wait"),
+                            )
                         )
-                    )
+                    return sessions
+
+            if semaphore is None:
+                return await _query_worker()
+            async with semaphore:
+                return await _query_worker()
+
+        worker_sessions = await asyncio.gather(*(_fetch_sessions(worker) for worker in workers))
+        results: list[SessionDescriptor] = []
+        for sessions in worker_sessions:
+            results.extend(sessions)
         return results
 
     @app.post("/sessions", response_model=CreateSessionResponse, status_code=status.HTTP_201_CREATED)
