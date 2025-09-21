@@ -39,7 +39,7 @@ from .models import (
     SessionDescriptor,
     WorkerStatus,
 )
-from .service import worker_client
+from .service import aclose_worker_clients, worker_client
 
 LOGGER = logging.getLogger(__name__)
 
@@ -152,6 +152,10 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
 
     def get_state(request: Request) -> AppState:
         return get_app_state(request.app)
+
+    @app.on_event("shutdown")
+    async def close_worker_clients() -> None:
+        await aclose_worker_clients()
 
     @app.get("/health")
     async def health(state: AppState = Depends(get_state)) -> dict:
