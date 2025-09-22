@@ -132,7 +132,7 @@ input {
   align-items: center;
   gap: 12px;
   padding: 12px;
-  border-radius: 14px;
+  border-radius: 10px;
   background: rgba(37, 99, 235, 0.08);
 }
 
@@ -156,7 +156,7 @@ input {
   display: inline-block;
   width: 12px;
   height: 12px;
-  border-radius: 50%;
+  border-radius: 10px;
   flex-shrink: 0;
   box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.08);
   transition: background-color 0.2s ease;
@@ -365,7 +365,7 @@ input {
   align-items: center;
   gap: 8px;
   padding: 6px;
-  border-radius: 999px;
+  border-radius: 10px;
   background: var(--bg-panel);
   border: 1px solid var(--border-color);
   box-shadow: var(--card-shadow);
@@ -382,7 +382,7 @@ input {
 
 .tab-button {
   border: none;
-  border-radius: 999px;
+  border-radius: 10px;
   background: transparent;
   padding: 8px 20px;
   font-weight: 600;
@@ -411,7 +411,7 @@ input {
 
 .stat {
   background: var(--bg-panel);
-  border-radius: 16px;
+  border-radius: 10px;
   padding: 8px 18px;
   min-width: 120px;
   min-height: var(--topbar-control-height);
@@ -459,7 +459,7 @@ input {
 
 .panel {
   background: var(--bg-panel);
-  border-radius: 20px;
+  border-radius: 10px;
   border: 1px solid var(--border-color);
   box-shadow: var(--card-shadow);
   padding: 24px;
@@ -544,7 +544,7 @@ input {
   display: inline-flex;
   align-items: center;
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: 10px;
   font-size: 0.75rem;
   font-weight: 600;
   background: rgba(148, 163, 184, 0.18);
@@ -575,7 +575,7 @@ input {
   display: inline-flex;
   align-items: center;
   padding: 3px 8px;
-  border-radius: 999px;
+  border-radius: 10px;
   font-size: 0.7rem;
   background: rgba(148, 163, 184, 0.18);
   color: inherit;
@@ -651,7 +651,7 @@ input {
   width: 100%;
   min-height: 420px;
   border: 1px solid var(--border-color);
-  border-radius: 16px;
+  border-radius: 10px;
   box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.12);
   background: #111827;
 }
@@ -684,7 +684,7 @@ input {
   display: inline-flex;
   gap: 6px;
   padding: 4px;
-  border-radius: 999px;
+  border-radius: 10px;
   background: rgba(37, 99, 235, 0.08);
 }
 
@@ -737,7 +737,7 @@ input {
 
 .wallboard-tile {
   position: relative;
-  border-radius: 16px;
+  border-radius: 10px;
   overflow: hidden;
   aspect-ratio: 16 / 10;
   border: 1px solid var(--border-color);
@@ -800,7 +800,7 @@ input {
 }
 
 .wallboard-tile__action {
-  border-radius: 0 0 999px 999px;
+  border-radius: 0 0 10px 10px;
   border: 1px solid rgba(15, 23, 42, 0.85);
   background: rgba(15, 23, 42, 0.92);
   color: #f8fafc;
