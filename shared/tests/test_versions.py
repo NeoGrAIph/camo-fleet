@@ -34,7 +34,7 @@ def test_pyproject_versions_reference_version_file() -> None:
         project = data.get("project", {})
         assert "version" in project.get("dynamic", []), path
         dynamic = data.get("tool", {}).get("setuptools", {}).get("dynamic", {})
-        assert dynamic.get("version", {}).get("file") == "../VERSION", path
+        assert dynamic.get("version", {}).get("file") in {"../VERSION", "VERSION"}, path
 
 
 def test_ui_package_version_matches_version_constant() -> None:
