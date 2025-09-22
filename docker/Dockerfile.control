@@ -12,7 +12,7 @@ WORKDIR /opt/app
 COPY shared /opt/shared
 COPY VERSION /opt/VERSION
 COPY control-plane /opt/app
-ENV PYTHONPATH=/opt/shared
+ENV PYTHONPATH=/opt
 
 ARG INSTALL_MODE=release
 RUN if [ "$INSTALL_MODE" = "dev" ]; then \
