@@ -5,7 +5,10 @@ ENV PYTHONUNBUFFERED=1
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/app
+COPY shared /opt/shared
+COPY VERSION /opt/VERSION
 COPY worker /opt/app
+ENV PYTHONPATH=/opt/shared
 
 ARG INSTALL_MODE=release
 RUN pip install --no-cache-dir --upgrade pip && \
