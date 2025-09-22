@@ -8,7 +8,7 @@ WORKDIR /opt/app
 COPY shared /opt/shared
 COPY VERSION /opt/VERSION
 COPY worker /opt/app
-ENV PYTHONPATH=/opt/shared
+ENV PYTHONPATH=/opt
 
 ARG INSTALL_MODE=release
 RUN pip install --no-cache-dir --upgrade pip && \
