@@ -141,7 +141,7 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
         handle = await manager.touch(session_id)
         if not handle:
             raise HTTPException(status_code=404, detail="Session not found")
-        return handle.detail(manager.ws_endpoint_for(handle), manager._build_vnc_payload(handle))
+        return manager.detail_for(handle)
 
     @app.get(cfg.metrics_endpoint)
     async def metrics(state: AppState = Depends(get_state)) -> Response:

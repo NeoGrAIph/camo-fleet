@@ -129,6 +129,13 @@ def test_touch_session_updates_last_seen(stub_app: TestClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["last_seen_at"] == "2024-01-01T00:05:00Z"
+    assert body["browser"] == "camoufox"
+    assert body["ws_endpoint"].endswith("/sess-1/ws")
+    assert body["vnc"] == {
+        "ws": None,
+        "http": None,
+        "password_protected": False,
+    }
 
 
 def test_delete_session_removes_from_store(stub_app: TestClient) -> None:
