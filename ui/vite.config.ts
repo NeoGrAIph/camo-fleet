@@ -5,6 +5,7 @@ const apiTarget = process.env.VITE_API_ORIGIN ?? 'http://localhost:9000';
 
 export default defineConfig({
   plugins: [react()],
+  logLevel: 'warn',
   server: {
     port: 5173,
     proxy: {
