@@ -151,22 +151,34 @@ input {
   color: var(--text-secondary-dark);
 }
 
-.worker-list .pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
+.worker-status-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  font-size: 0.75rem;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.08);
+  transition: background-color 0.2s ease;
 }
 
-.pill-healthy {
-  color: var(--success);
+:root[data-theme='dark'] .worker-status-dot {
+  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.18);
 }
 
-.pill-offline {
-  color: var(--danger);
+.worker-status-dot--healthy {
+  background: var(--success);
+}
+
+.worker-status-dot--degraded {
+  background: var(--warning);
+}
+
+.worker-status-dot--offline {
+  background: var(--danger);
+}
+
+.worker-status-dot--unknown {
+  background: var(--muted);
 }
 
 .sidebar .empty {
