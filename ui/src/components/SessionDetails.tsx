@@ -1,6 +1,7 @@
 import type { SessionItem } from '../api';
 import { formatStartUrlWait, getStatusBadgeClass } from '../utils/session';
 import { formatIdle, formatRelative, remainingIdleSeconds } from '../utils/time';
+import { buildVncEmbedUrl, buildVncViewerUrl } from '../utils/vnc';
 import { SessionControls } from './SessionControls';
 
 interface SessionDetailsProps {
@@ -12,21 +13,6 @@ interface SessionDetailsProps {
   onCopyWs: (endpoint: string) => void;
   isTouching: boolean;
   isKilling: boolean;
-}
-
-function buildVncEmbedUrl(raw?: string | null): string | null {
-  if (!raw) return null;
-  try {
-    const url = new URL(raw);
-    url.searchParams.set('autoconnect', '1');
-    url.searchParams.set('resize', 'scale');
-    url.searchParams.set('reconnect', 'true');
-    url.searchParams.set('view_only', 'true');
-    return url.toString();
-  } catch (error) {
-    console.warn('Failed to build VNC URL', error);
-    return raw;
-  }
 }
 
 export function SessionDetails({
@@ -117,7 +103,12 @@ export function SessionDetails({
           <h4>Live browser</h4>
           <div className="actions">
             {session.vnc?.http ? (
-              <a className="btn btn-secondary" href={session.vnc.http} target="_blank" rel="noreferrer">
+              <a
+                className="btn btn-secondary"
+                href={buildVncViewerUrl(session.vnc.http) ?? session.vnc.http}
+                target="_blank"
+                rel="noreferrer"
+              >
                 Open full screen
               </a>
             ) : null}
