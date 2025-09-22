@@ -21,9 +21,9 @@ spec:
             - name: RUNNER_PORT
               value: "8070"
             - name: RUNNER_VNC_WS_BASE
-              value: ws://camofleet-worker-vnc:6900
+              value: ws://camofleet-worker-vnc
             - name: RUNNER_VNC_HTTP_BASE
-              value: http://camofleet-worker-vnc:6900
+              value: http://camofleet-worker-vnc
             - name: RUNNER_VNC_PORT_MIN
               value: "5900"
             - name: RUNNER_VNC_PORT_MAX

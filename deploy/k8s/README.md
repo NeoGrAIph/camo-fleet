@@ -46,6 +46,7 @@ VNC-сессия. Для внешнего доступа настройте TCP-
 - `WORKER_RUNNER_BASE_URL` — адрес sidecar runner'а (по умолчанию `http://localhost:8070`).
 - `WORKER_SUPPORTS_VNC` — флаг, который сигнализирует control-plane, что воркер умеет в VNC.
 - `RUNNER_VNC_WS_BASE` / `RUNNER_VNC_HTTP_BASE` — задаются только для runner-vnc и используются UI.
+  Значения указываются без порта: runner автоматически добавит выделенный порт сессии.
 
 ### Control-plane
 
@@ -68,12 +69,14 @@ Example value:
     "name": "worker-vnc",
     "url": "http://camofleet-worker-vnc:8080",
     "supports_vnc": true,
-    "vnc_ws": "ws://camofleet-worker-vnc:6900",
-    "vnc_http": "http://camofleet-worker-vnc:6900"
+    "vnc_ws": "ws://camofleet-worker-vnc:{port}",
+    "vnc_http": "http://camofleet-worker-vnc:{port}"
   }
 ]
 ```
-Runner автоматически подменяет порт в этих базовых URL на выделенный для конкретной VNC-сессии.
+Control-plane подставляет порт и хост активной сессии в плейсхолдер `{port}` (и `{host}`, если он
+используется). Runner, в свою очередь, формирует исходные URL с фактическим портом из своего
+диапазона, поэтому UI и API получают корректные публичные адреса без ручных правок.
 
 ### UI
 

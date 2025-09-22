@@ -19,8 +19,8 @@ def test_apply_vnc_overrides_when_worker_provides_urls() -> None:
 
     result = apply_vnc_overrides(worker, payload)
 
-    assert result["ws"] == "wss://public.example:7443/novnc/?token=abc"
-    assert result["http"] == "https://public.example/vnc.html?foo=1"
+    assert result["ws"] == "wss://public.example:6901/novnc/?token=abc"
+    assert result["http"] == "https://public.example:6901/vnc.html?foo=1"
     assert result["password_protected"] is True
 
 
@@ -32,3 +32,75 @@ def test_apply_vnc_overrides_when_worker_has_no_overrides() -> None:
     }
 
     assert apply_vnc_overrides(worker, payload) == payload
+
+
+def test_apply_vnc_overrides_supports_port_placeholder() -> None:
+    worker = WorkerConfig(
+        name="vnc-worker",
+        url="http://internal:8080",
+        vnc_ws="wss://edge-{port}.example",
+        vnc_http="https://edge.example/view?external_port={port}",
+    )
+    payload = {
+        "ws": "ws://internal-host:6901/novnc/?token=abc",
+        "http": "http://internal-host:6901/vnc.html?foo=1",
+    }
+
+    result = apply_vnc_overrides(worker, payload)
+
+    assert result["ws"] == "wss://edge-6901.example:6901/novnc/?token=abc"
+    assert result["http"] == "https://edge.example:6901/view?external_port=6901"
+
+
+def test_apply_vnc_overrides_allows_path_placeholder() -> None:
+    worker = WorkerConfig(
+        name="vnc-worker",
+        url="http://internal:8080",
+        vnc_ws="wss://proxy.example:{port}/proxy/{port}",
+        vnc_http="https://proxy.example/proxy/{port}",
+    )
+    payload = {
+        "ws": "ws://internal-host:6905/novnc/?token=abc",
+        "http": "http://internal-host:6905/vnc.html?foo=1",
+    }
+
+    result = apply_vnc_overrides(worker, payload)
+
+    assert result["ws"] == "wss://proxy.example:6905/proxy/6905?token=abc"
+    assert result["http"] == "https://proxy.example:6905/proxy/6905?foo=1"
+
+
+def test_apply_vnc_overrides_preserves_credentials() -> None:
+    worker = WorkerConfig(
+        name="vnc-worker",
+        url="http://internal:8080",
+        vnc_ws="wss://user:pass@public.example",
+        vnc_http="https://user:pass@public.example",
+    )
+    payload = {
+        "ws": "ws://internal-host:6902/novnc/?token=abc",
+        "http": "http://internal-host:6902/vnc.html?foo=1",
+    }
+
+    result = apply_vnc_overrides(worker, payload)
+
+    assert result["ws"] == "wss://user:pass@public.example:6902/novnc/?token=abc"
+    assert result["http"] == "https://user:pass@public.example:6902/vnc.html?foo=1"
+
+
+def test_apply_vnc_overrides_supports_host_placeholder() -> None:
+    worker = WorkerConfig(
+        name="vnc-worker",
+        url="http://internal:8080",
+        vnc_ws="wss://{host}/proxy",
+        vnc_http="https://proxy.example/{host}/{port}",
+    )
+    payload = {
+        "ws": "ws://internal-host:6903/novnc/?token=abc",
+        "http": "http://internal-host:6903/vnc.html?foo=1",
+    }
+
+    result = apply_vnc_overrides(worker, payload)
+
+    assert result["ws"] == "wss://internal-host:6903/proxy?token=abc"
+    assert result["http"] == "https://proxy.example:6903/internal-host/6903?foo=1"
