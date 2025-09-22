@@ -95,6 +95,7 @@ export default function App(): JSX.Element {
         ]);
         setWorkers(workerData);
         setSessions(sessionData);
+        setError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       }
