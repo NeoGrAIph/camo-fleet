@@ -123,6 +123,20 @@ export default function App(): JSX.Element {
     [workers],
   );
 
+  const selectableWorkerNames = useMemo(
+    () =>
+      healthyWorkers
+        .filter((worker) => !form.vnc || worker.supports_vnc)
+        .map((worker) => worker.name),
+    [healthyWorkers, form.vnc],
+  );
+
+  useEffect(() => {
+    if (!form.worker) return;
+    if (selectableWorkerNames.includes(form.worker)) return;
+    setForm((prev) => ({ ...prev, worker: undefined }));
+  }, [form.worker, selectableWorkerNames]);
+
   const selectedSession = useMemo(
     () => sessions.find((item) => sessionKey(item) === selectedKey) ?? null,
     [sessions, selectedKey],
