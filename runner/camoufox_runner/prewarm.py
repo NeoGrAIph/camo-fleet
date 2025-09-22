@@ -44,7 +44,9 @@ class PrewarmPool:
         self._headless: list[PrewarmedResource] = []
         self._vnc: list[PrewarmedResource] = []
         self._lock = asyncio.Lock()
+        self._top_up_lock = asyncio.Lock()
         self._task: asyncio.Task[None] | None = None
+        self._closing = False
 
     async def start(self) -> None:
         """Start the background loop that keeps the pool filled."""
@@ -64,16 +66,21 @@ class PrewarmPool:
     async def close(self) -> None:
         """Stop the background loop and dispose prewarmed resources."""
 
-        await self.stop()
-        async with self._lock:
-            resources = list(self._headless) + list(self._vnc)
-            self._headless.clear()
-            self._vnc.clear()
-        for item in resources:
-            try:
-                await item.server.close()
-            finally:
-                await self._vnc_manager.stop_session(item.vnc_session)
+        self._closing = True
+        try:
+            await self.stop()
+            async with self._top_up_lock:
+                async with self._lock:
+                    resources = list(self._headless) + list(self._vnc)
+                    self._headless.clear()
+                    self._vnc.clear()
+            for item in resources:
+                try:
+                    await item.server.close()
+                finally:
+                    await self._vnc_manager.stop_session(item.vnc_session)
+        finally:
+            self._closing = False
 
     async def acquire(self, *, vnc: bool, headless: bool) -> PrewarmedResource | None:
         async with self._lock:
@@ -84,44 +91,51 @@ class PrewarmPool:
             return None
 
     def schedule_top_up(self) -> None:
-        if not self._should_run_loop():
+        if self._closing or not self._should_run_loop():
             return
         task = asyncio.create_task(self.top_up_once(), name="camoufox-prewarm-kick")
         task.add_done_callback(lambda _: None)
 
     async def top_up_once(self) -> None:
-        need_headless: int
-        need_vnc: int
-        async with self._lock:
-            need_headless = max(0, self._headless_target - len(self._headless))
-            need_vnc = max(0, self._vnc_target - len(self._vnc))
-        for _ in range(need_headless):
-            try:
-                server = await self._launcher.launch(headless=True, vnc=False, display=None)
-                resource = PrewarmedResource(server=server, vnc_session=None, headless=True)
-                async with self._lock:
-                    self._headless.append(resource)
-            except Exception as exc:  # pragma: no cover - defensive
-                self._logger.warning("Failed to prewarm headless server: %s", exc)
-                break
-        for _ in range(need_vnc):
-            vnc_session: VncSession | None = None
-            try:
-                vnc_session = await self._vnc_manager.start_session()
-                server = await self._launcher.launch(
-                    headless=False,
-                    vnc=True,
-                    display=vnc_session.display,
-                )
-                resource = PrewarmedResource(server=server, vnc_session=vnc_session, headless=False)
-                async with self._lock:
-                    self._vnc.append(resource)
-            except Exception as exc:  # pragma: no cover - defensive
-                self._logger.warning("Failed to prewarm VNC server: %s", exc)
-                if vnc_session is not None:
-                    with contextlib.suppress(Exception):
-                        await self._vnc_manager.stop_session(vnc_session)
-                break
+        async with self._top_up_lock:
+            if self._closing:
+                return
+            need_headless: int
+            need_vnc: int
+            async with self._lock:
+                need_headless = max(0, self._headless_target - len(self._headless))
+                need_vnc = max(0, self._vnc_target - len(self._vnc))
+            for _ in range(need_headless):
+                if self._closing:
+                    break
+                try:
+                    server = await self._launcher.launch(headless=True, vnc=False, display=None)
+                    resource = PrewarmedResource(server=server, vnc_session=None, headless=True)
+                    async with self._lock:
+                        self._headless.append(resource)
+                except Exception as exc:  # pragma: no cover - defensive
+                    self._logger.warning("Failed to prewarm headless server: %s", exc)
+                    break
+            for _ in range(need_vnc):
+                vnc_session: VncSession | None = None
+                if self._closing:
+                    break
+                try:
+                    vnc_session = await self._vnc_manager.start_session()
+                    server = await self._launcher.launch(
+                        headless=False,
+                        vnc=True,
+                        display=vnc_session.display,
+                    )
+                    resource = PrewarmedResource(server=server, vnc_session=vnc_session, headless=False)
+                    async with self._lock:
+                        self._vnc.append(resource)
+                except Exception as exc:  # pragma: no cover - defensive
+                    self._logger.warning("Failed to prewarm VNC server: %s", exc)
+                    if vnc_session is not None:
+                        with contextlib.suppress(Exception):
+                            await self._vnc_manager.stop_session(vnc_session)
+                    break
 
     def _should_run_loop(self) -> bool:
         return self._headless_target > 0 or self._vnc_target > 0
