@@ -31,6 +31,8 @@ spec:
               value: http://localhost:8070
             - name: WORKER_SUPPORTS_VNC
               value: "false"
+            - name: WORKER_SESSION_DEFAULTS__HEADLESS
+              value: "true"
           ports:
             - containerPort: 8080
               name: http
