@@ -144,6 +144,8 @@ class PrewarmPool:
         while True:
             try:
                 await self.top_up_once()
+            except asyncio.CancelledError:
+                raise
             except Exception as exc:  # pragma: no cover - defensive
                 self._logger.warning("Prewarm loop error: %s", exc)
             await asyncio.sleep(self._check_interval)
