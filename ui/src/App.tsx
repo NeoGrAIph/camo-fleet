@@ -10,6 +10,7 @@ import {
 import { LaunchSessionForm, type LaunchSessionFormState } from './components/LaunchSessionForm';
 import { SessionDetails } from './components/SessionDetails';
 import { SessionTable } from './components/SessionTable';
+import { SessionWallboard } from './components/SessionWallboard';
 import { WorkerList } from './components/WorkerList';
 import { sessionKey, type StartUrlWait } from './utils/session';
 
@@ -29,6 +30,8 @@ type ActionState = {
   type: 'kill' | 'touch';
   key: string;
 } | null;
+
+type MainView = 'sessions' | 'wallboard';
 
 const DEFAULT_FORM: LaunchSessionFormState = {
   worker: undefined,
@@ -78,6 +81,7 @@ export default function App(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [actionState, setActionState] = useState<ActionState>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [mainView, setMainView] = useState<MainView>('sessions');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -280,56 +284,86 @@ export default function App(): JSX.Element {
 
       <main className="main">
         <section className="topbar">
-          <div className="stat">
-            <span className="stat-label">Total</span>
-            <span className="stat-value">{stats.total}</span>
-          </div>
-          {Array.from(stats.byStatus.entries()).map(([status, count]) => (
-            <div key={status} className="stat">
-              <span className="stat-label">{status}</span>
-              <span className="stat-value">{count}</span>
+          <nav className="main-tabs" aria-label="Main views">
+            <button
+              type="button"
+              className={`tab-button${mainView === 'sessions' ? ' tab-button--active' : ''}`}
+              onClick={() => setMainView('sessions')}
+            >
+              Manage sessions
+            </button>
+            <button
+              type="button"
+              className={`tab-button${mainView === 'wallboard' ? ' tab-button--active' : ''}`}
+              onClick={() => setMainView('wallboard')}
+            >
+              Session wall
+            </button>
+          </nav>
+
+          <div className="topbar-stats">
+            <div className="stat">
+              <span className="stat-label">Total</span>
+              <span className="stat-value">{stats.total}</span>
             </div>
-          ))}
+            {Array.from(stats.byStatus.entries()).map(([status, count]) => (
+              <div key={status} className="stat">
+                <span className="stat-label">{status}</span>
+                <span className="stat-value">{count}</span>
+              </div>
+            ))}
+          </div>
         </section>
 
-        <div className="content-grid">
-          <section className="panel">
-            <header className="panel-header">
-              <div>
-                <h2>Sessions</h2>
-                <p>{sessions.length ? 'Select a session to manage it' : 'No active sessions'}</p>
-              </div>
-            </header>
-            <SessionTable
-              sessions={sessions}
-              selectedKey={selectedKey}
-              onSelect={setSelectedKey}
-              now={now}
-            />
-          </section>
-
-          <section className="panel">
-            <header className="panel-header">
-              <h2>Inspector</h2>
-            </header>
-            {selectedSession ? (
-              <SessionDetails
-                session={selectedSession}
+        {mainView === 'sessions' ? (
+          <div className="content-grid">
+            <section className="panel">
+              <header className="panel-header">
+                <div>
+                  <h2>Sessions</h2>
+                  <p>{sessions.length ? 'Select a session to manage it' : 'No active sessions'}</p>
+                </div>
+              </header>
+              <SessionTable
+                sessions={sessions}
+                selectedKey={selectedKey}
+                onSelect={setSelectedKey}
                 now={now}
-                iframeKey={selectedSessionKey ?? 'no-session'}
-                onTouch={() => handleTouch(selectedSession)}
-                onKill={() => handleKill(selectedSession)}
-                onCopyWs={handleCopyWs}
-                isTouching={actionInFlight('touch', selectedSession)}
-                isKilling={actionInFlight('kill', selectedSession)}
               />
-            ) : (
-              <div className="empty-state">
-                <p>Select a session to inspect details, control TTL, or open the live browser.</p>
-              </div>
-            )}
-          </section>
-        </div>
+            </section>
+
+            <section className="panel">
+              <header className="panel-header">
+                <h2>Inspector</h2>
+              </header>
+              {selectedSession ? (
+                <SessionDetails
+                  session={selectedSession}
+                  now={now}
+                  iframeKey={selectedSessionKey ?? 'no-session'}
+                  onTouch={() => handleTouch(selectedSession)}
+                  onKill={() => handleKill(selectedSession)}
+                  onCopyWs={handleCopyWs}
+                  isTouching={actionInFlight('touch', selectedSession)}
+                  isKilling={actionInFlight('kill', selectedSession)}
+                />
+              ) : (
+                <div className="empty-state">
+                  <p>Select a session to inspect details, control TTL, or open the live browser.</p>
+                </div>
+              )}
+            </section>
+          </div>
+        ) : (
+          <SessionWallboard
+            sessions={sessions}
+            now={now}
+            onInspect={(session) => {
+              setSelectedKey(sessionKey(session));
+              setMainView('sessions');
+            }}
+          />
+        )}
       </main>
     </div>
   );
