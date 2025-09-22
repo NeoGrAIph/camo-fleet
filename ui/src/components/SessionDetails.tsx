@@ -21,6 +21,7 @@ function buildVncEmbedUrl(raw?: string | null): string | null {
     url.searchParams.set('autoconnect', '1');
     url.searchParams.set('resize', 'scale');
     url.searchParams.set('reconnect', 'true');
+    url.searchParams.set('view_only', 'true');
     return url.toString();
   } catch (error) {
     console.warn('Failed to build VNC URL', error);
