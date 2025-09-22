@@ -790,8 +790,8 @@ input {
 
 .wallboard-tile__actions {
   position: absolute;
-  top: 8px;
-  left: 12px;
+  top: 0;
+  left: 0;
   display: inline-flex;
   gap: 6px;
   align-items: center;
@@ -800,7 +800,7 @@ input {
 }
 
 .wallboard-tile__action {
-  border-radius: 999px;
+  border-radius: 0 0 999px 999px;
   border: 1px solid rgba(15, 23, 42, 0.85);
   background: rgba(15, 23, 42, 0.92);
   color: #f8fafc;
@@ -814,9 +814,9 @@ input {
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  padding: 4px 12px;
+  padding: 0 12px;
   line-height: 1.1;
-  min-height: 28px;
+  height: 24px;
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.35);
 }
 
