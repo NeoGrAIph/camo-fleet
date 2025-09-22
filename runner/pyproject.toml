@@ -28,4 +28,4 @@ where = ["."]
 include = ["camoufox_runner"]
 
 [tool.setuptools.dynamic]
-version = {file = "../VERSION"}
+version = {file = "VERSION"}

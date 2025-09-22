@@ -28,4 +28,4 @@ where = ["."]
 include = ["camofleet_control"]
 
 [tool.setuptools.dynamic]
-version = {file = "../VERSION"}
+version = {file = "VERSION"}
