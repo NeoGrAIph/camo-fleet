@@ -75,9 +75,9 @@ class VncResourcePool:
             if slot not in self._active:
                 return
             self._active.remove(slot)
-            self._display_pool.append(slot.display)
-            self._vnc_ports.append(slot.vnc_port)
-            self._ws_ports.append(slot.ws_port)
+            self._display_pool.appendleft(slot.display)
+            self._vnc_ports.appendleft(slot.vnc_port)
+            self._ws_ports.appendleft(slot.ws_port)
 
 
 class VncProcessManager:
