@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { act } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
@@ -81,5 +81,48 @@ describe('App polling behaviour', () => {
     await flushPromises();
 
     expect(screen.queryByText('Network down')).not.toBeInTheDocument();
+  });
+
+  it('resets worker selection when the chosen worker becomes unavailable', async () => {
+    fetchWorkersMock.mockReset();
+    fetchSessionsMock.mockReset();
+
+    const workerResponses: WorkerStatus[][] = [
+      [
+        { name: 'alpha', healthy: true, detail: {}, supports_vnc: true },
+        { name: 'beta', healthy: true, detail: {}, supports_vnc: true },
+      ],
+      [{ name: 'beta', healthy: true, detail: {}, supports_vnc: true }],
+    ];
+    let workersCallCount = 0;
+    fetchWorkersMock.mockImplementation(() => {
+      const index = Math.min(workersCallCount, workerResponses.length - 1);
+      workersCallCount += 1;
+      return Promise.resolve(workerResponses[index]);
+    });
+    fetchSessionsMock.mockResolvedValue([]);
+
+    render(<App />);
+
+    await flushPromises();
+
+    const workerSelect = screen.getByLabelText('Worker') as HTMLSelectElement;
+    expect(workerSelect).toHaveValue('');
+
+    await act(async () => {
+      fireEvent.change(workerSelect, { target: { value: 'alpha' } });
+    });
+
+    await flushPromises();
+    expect(workerSelect).toHaveValue('alpha');
+
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+    });
+
+    await flushPromises();
+
+    expect(workerSelect).toHaveValue('');
+    expect(screen.queryByRole('option', { name: 'alpha' })).not.toBeInTheDocument();
   });
 });
