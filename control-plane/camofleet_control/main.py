@@ -398,27 +398,138 @@ def build_worker_ws_endpoint(worker: WorkerConfig, session_id: str) -> str:
     return urlunparse(base)
 
 
+def _default_port_for_scheme(scheme: str | None) -> int | None:
+    if not scheme:
+        return None
+    scheme = scheme.lower()
+    if scheme in {"http", "ws"}:
+        return 80
+    if scheme in {"https", "wss"}:
+        return 443
+    return None
+
+
+def _format_hostname(hostname: str | None) -> str:
+    if not hostname:
+        return ""
+    if ":" in hostname and not hostname.startswith("["):
+        return f"[{hostname}]"
+    return hostname
+
+
+def _build_netloc(
+    username: str | None, password: str | None, hostname: str | None, port: int | None
+) -> str:
+    host = _format_hostname(hostname)
+    if not host:
+        return ""
+    userinfo = ""
+    if username:
+        userinfo = username
+        if password is not None:
+            userinfo += f":{password}"
+        userinfo += "@"
+    if port is not None:
+        return f"{userinfo}{host}:{port}"
+    return f"{userinfo}{host}"
+
+
 def apply_vnc_overrides(worker: WorkerConfig, payload: dict[str, Any]) -> dict[str, Any]:
     if not payload:
         return payload
 
     mutated = dict(payload)
-    for key, override_url in (("ws", worker.vnc_ws), ("http", worker.vnc_http)):
+    overrides = (("ws", worker.vnc_ws), ("http", worker.vnc_http))
+    for key, override_template in overrides:
         original_url = payload.get(key)
-        if not original_url or not override_url:
+        if not original_url or not override_template:
             continue
+
         try:
             parsed_original = urlparse(original_url)
-            parsed_override = urlparse(override_url)
         except ValueError:
             continue
-        if not parsed_override.scheme or not parsed_override.netloc:
+
+        try:
+            urlparse(override_template)
+        except ValueError:
             continue
-        replaced = parsed_original._replace(
-            scheme=parsed_override.scheme,
-            netloc=parsed_override.netloc,
+
+        port_placeholder_used = "{port}" in override_template
+        host_placeholder_used = "{host}" in override_template
+
+        session_port = parsed_original.port
+        if session_port is None:
+            session_port = _default_port_for_scheme(parsed_original.scheme)
+
+        if port_placeholder_used and session_port is None:
+            continue
+        if host_placeholder_used and not parsed_original.hostname:
+            continue
+
+        rendered_override = override_template
+        if port_placeholder_used and session_port is not None:
+            rendered_override = rendered_override.replace("{port}", str(session_port))
+        if host_placeholder_used and parsed_original.hostname:
+            rendered_override = rendered_override.replace("{host}", parsed_original.hostname)
+
+        try:
+            parsed_override = urlparse(rendered_override)
+        except ValueError:
+            continue
+
+        if not parsed_override.scheme or not parsed_override.hostname:
+            continue
+
+        final_scheme = parsed_override.scheme
+
+        if parsed_override.port is not None:
+            if port_placeholder_used:
+                final_port = parsed_override.port
+            else:
+                LOGGER.warning(
+                    "Ignoring static port %s from VNC override %r for worker %s",
+                    parsed_override.port,
+                    override_template,
+                    worker.name,
+                )
+                final_port = session_port
+        else:
+            final_port = session_port
+
+        final_username = (
+            parsed_override.username
+            if parsed_override.username is not None
+            else parsed_original.username
         )
-        mutated[key] = urlunparse(replaced)
+        final_password = (
+            parsed_override.password
+            if parsed_override.username is not None
+            else parsed_original.password
+        )
+        final_hostname = parsed_override.hostname or parsed_original.hostname
+        if not final_hostname:
+            continue
+
+        final_path = parsed_override.path or parsed_original.path
+        final_params = parsed_override.params or parsed_original.params
+        final_query = parsed_override.query or parsed_original.query
+        final_fragment = parsed_override.fragment or parsed_original.fragment
+
+        netloc = _build_netloc(final_username, final_password, final_hostname, final_port)
+        if not netloc:
+            continue
+
+        mutated[key] = urlunparse(
+            (
+                final_scheme,
+                netloc,
+                final_path,
+                final_params,
+                final_query,
+                final_fragment,
+            )
+        )
 
     return mutated
 

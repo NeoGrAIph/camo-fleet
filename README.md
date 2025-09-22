@@ -215,6 +215,12 @@ cp .env.example .env
 - `vnc_ws` — базовый WebSocket URL предпросмотра (обязателен, если `supports_vnc=true`).
 - `vnc_http` — HTTP URL к noVNC iframe (опционально, если требуется веб-доступ).
 
+Значения `vnc_ws` и `vnc_http` поддерживают плейсхолдеры `{port}` и `{host}`. Плейсхолдеры могут
+использоваться в хосте, пути или query-строке: control-plane подставит фактический адрес и порт
+сессии, сохраняя остальные части URL. Это позволяет настраивать, например, публичные прокси
+через единый домен (`https://public.example/proxy/{port}`) или динамические поддомены
+(`wss://vnc-{port}.example`).
+
 ## Переменные окружения
 
 ### Runner
@@ -222,8 +228,8 @@ cp .env.example .env
 | Переменная | Значение по умолчанию | Описание |
 | ---------- | --------------------- | -------- |
 | `RUNNER_CORS_ORIGINS` | `['*']` | Список origin'ов (JSON-массив или через запятую) для CORS. Используйте конкретные домены в production; значение `*` автоматически отключает `allow_credentials`. |
-| `RUNNER_VNC_WS_BASE` | `None` | Базовый адрес (со схемой и хостом) для генерации WebSocket URL предпросмотра. Порт будет подменён на выделенный для конкретной сессии. |
-| `RUNNER_VNC_HTTP_BASE` | `None` | Аналогично `RUNNER_VNC_WS_BASE`, но для noVNC iframe (`/vnc.html`). |
+| `RUNNER_VNC_WS_BASE` | `None` | Базовый адрес (со схемой и хостом) для генерации WebSocket URL предпросмотра. Порт будет подменён на выделенный для конкретной сессии, поэтому задавайте значение без явного `:порт`. |
+| `RUNNER_VNC_HTTP_BASE` | `None` | Аналогично `RUNNER_VNC_WS_BASE`, но для noVNC iframe (`/vnc.html`): указывайте схему и хост без порта, runner добавит его автоматически. |
 | `RUNNER_VNC_DISPLAY_MIN` / `RUNNER_VNC_DISPLAY_MAX` | `100` / `199` | Диапазон виртуальных `DISPLAY`, выделяемых Xvfb. |
 | `RUNNER_VNC_PORT_MIN` / `RUNNER_VNC_PORT_MAX` | `5900` / `5999` | Диапазон TCP-портов для `x11vnc`. |
 | `RUNNER_VNC_WS_PORT_MIN` / `RUNNER_VNC_WS_PORT_MAX` | `6900` / `6999` | Диапазон TCP-портов для websockify/noVNC. |
@@ -252,7 +258,7 @@ cp .env.example .env
 | Переменная         | Значение по умолчанию | Описание                                         |
 | ------------------ | --------------------- | ------------------------------------------------ |
 | `CONTROL_CORS_ORIGINS` | `['*']`              | Origin'ы, которым разрешён доступ к API. При `*` `allow_credentials` отключается; для production перечислите конкретные домены. |
-| `CONTROL_WORKERS`  | см. config            | JSON-массив с воркерами: `name`, `url`, `supports_vnc`, `vnc_ws`, `vnc_http`. |
+| `CONTROL_WORKERS`  | см. config            | JSON-массив с воркерами (`name`, `url`, `supports_vnc`, `vnc_ws`, `vnc_http`). Поля `vnc_ws` и `vnc_http` поддерживают плейсхолдеры `{port}` и `{host}` для подстановки адреса активной сессии. |
 | `CONTROL_PORT`     | `9000`                | Порт HTTP API.                                   |
 | `CONTROL_METRICS_ENDPOINT` | `/metrics`     | Путь, на котором публикуются Prometheus-метрики. |
 
