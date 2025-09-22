@@ -34,6 +34,7 @@ services:
     environment:
       WORKER_RUNNER_BASE_URL: http://runner-headless:8070
       WORKER_SUPPORTS_VNC: 'false'
+      WORKER_SESSION_DEFAULTS__HEADLESS: 'true'
     depends_on:
       - runner-headless
     ports:
