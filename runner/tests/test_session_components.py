@@ -39,6 +39,38 @@ class _StubLauncher:
         return server
 
 
+class _BlockingLauncher(_StubLauncher):
+    def __init__(self) -> None:
+        super().__init__()
+        self._block_next = False
+        self.launch_started = asyncio.Event()
+        self._resume_launch: asyncio.Future[None] | None = None
+        self.cancelled_during_launch = False
+
+    def block_next_launch(self) -> None:
+        self._block_next = True
+        self.launch_started.clear()
+
+    def allow_launch(self) -> None:
+        if self._resume_launch and not self._resume_launch.done():
+            self._resume_launch.set_result(None)
+
+    async def launch(self, *, headless: bool, vnc: bool, display: str | None, **kwargs: object) -> _StubServer:
+        if self._block_next:
+            self._block_next = False
+            self.launch_started.set()
+            loop = asyncio.get_running_loop()
+            self._resume_launch = loop.create_future()
+            try:
+                await self._resume_launch
+            except asyncio.CancelledError:
+                self.cancelled_during_launch = True
+                raise
+            finally:
+                self._resume_launch = None
+        return await super().launch(headless=headless, vnc=vnc, display=display, **kwargs)
+
+
 class _StubVncManager:
     def __init__(self) -> None:
         self.available = True
@@ -230,3 +262,38 @@ async def test_prewarm_pool_loop_recovers_after_drain() -> None:
             await item.server.close()
             await vnc_manager.stop_session(item.vnc_session)
         await pool.close()
+
+
+@pytest.mark.anyio
+async def test_prewarm_pool_stop_cancels_blocked_launch() -> None:
+    launcher = _BlockingLauncher()
+    vnc_manager = _StubVncManager()
+    pool = PrewarmPool(
+        launcher=launcher,
+        vnc_manager=vnc_manager,
+        headless_target=1,
+        vnc_target=0,
+        check_interval=0.01,
+    )
+
+    await pool.start()
+    close_called = False
+    try:
+        await _wait_for_counts(pool, headless=1, vnc=0)
+
+        launcher.block_next_launch()
+        pool._headless_target = 2  # type: ignore[attr-defined]
+
+        await asyncio.wait_for(launcher.launch_started.wait(), 0.5)
+
+        await asyncio.wait_for(pool.stop(), 0.5)
+        assert launcher.cancelled_during_launch
+        assert pool._task is None  # type: ignore[attr-defined]
+
+        await asyncio.wait_for(pool.close(), 0.5)
+        close_called = True
+    finally:
+        if not close_called:
+            await pool.close()
+
+    assert all(server.closed for server in launcher.servers)
