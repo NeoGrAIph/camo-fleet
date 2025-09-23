@@ -1,0 +1,23 @@
+{{- if .Values.workerVnc.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "camofleet.workerVnc.fullname" . }}
+  labels:
+    app: {{ include "camofleet.workerVnc.fullname" . }}
+{{ include "camofleet.labels" . | indent 4 }}
+spec:
+  type: {{ .Values.workerVnc.service.type }}
+  selector:
+    app: {{ include "camofleet.workerVnc.fullname" . }}
+  ports:
+    - port: {{ .Values.workerVnc.service.port }}
+      targetPort: http
+      name: http
+    - port: {{ .Values.workerVnc.vncWsPort }}
+      targetPort: vnc-ws
+      name: vnc-ws
+    - port: {{ .Values.workerVnc.vncRawPort }}
+      targetPort: vnc-raw
+      name: vnc-raw
+{{- end }}

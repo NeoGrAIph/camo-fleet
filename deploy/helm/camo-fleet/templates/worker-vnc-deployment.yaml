@@ -1,0 +1,83 @@
+{{- if .Values.workerVnc.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "camofleet.workerVnc.fullname" . }}
+  labels:
+    app: {{ include "camofleet.workerVnc.fullname" . }}
+{{ include "camofleet.labels" . | indent 4 }}
+spec:
+  replicas: {{ .Values.workerVnc.replicas }}
+  selector:
+    matchLabels:
+      app: {{ include "camofleet.workerVnc.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "camofleet.workerVnc.fullname" . }}
+        camofleet-role: worker-vnc
+{{ include "camofleet.selectorLabels" . | indent 8 }}
+      {{- with .Values.workerVnc.podAnnotations }}
+      annotations:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+    spec:
+{{ include "camofleet.imagePullSecrets" . | indent 6 }}
+      containers:
+        - name: runner
+          image: {{ include "camofleet.image" (dict "Values" .Values "repository" .Values.workerVnc.runnerImage.repository "tag" .Values.workerVnc.runnerImage.tag) }}
+          imagePullPolicy: {{ .Values.workerVnc.runnerImage.pullPolicy }}
+          env:
+            - name: RUNNER_PORT
+              value: "{{ .Values.workerVnc.runnerPort }}"
+            - name: RUNNER_VNC_WS_BASE
+              value: ws://{{ include "camofleet.workerVnc.fullname" . }}
+            - name: RUNNER_VNC_HTTP_BASE
+              value: http://{{ include "camofleet.workerVnc.fullname" . }}
+            - name: RUNNER_VNC_PORT_MIN
+              value: "{{ .Values.workerVnc.vncPortRange.raw.min }}"
+            - name: RUNNER_VNC_PORT_MAX
+              value: "{{ .Values.workerVnc.vncPortRange.raw.max }}"
+            - name: RUNNER_VNC_WS_PORT_MIN
+              value: "{{ .Values.workerVnc.vncPortRange.ws.min }}"
+            - name: RUNNER_VNC_WS_PORT_MAX
+              value: "{{ .Values.workerVnc.vncPortRange.ws.max }}"
+{{- with .Values.workerVnc.runnerExtraEnv }}
+{{ toYaml . | indent 12 }}
+{{- end }}
+          ports:
+            - containerPort: {{ .Values.workerVnc.runnerPort }}
+              name: runner-http
+            - containerPort: {{ .Values.workerVnc.vncWsPort }}
+              name: vnc-ws
+            - containerPort: {{ .Values.workerVnc.vncRawPort }}
+              name: vnc-raw
+          resources:
+{{ toYaml .Values.workerVnc.runnerResources | indent 12 }}
+        - name: worker
+          image: {{ include "camofleet.image" (dict "Values" .Values "repository" .Values.workerVnc.image.repository "tag" .Values.workerVnc.image.tag) }}
+          imagePullPolicy: {{ .Values.workerVnc.image.pullPolicy }}
+          env:
+            - name: WORKER_RUNNER_BASE_URL
+              value: http://localhost:{{ .Values.workerVnc.runnerPort }}
+            - name: WORKER_SUPPORTS_VNC
+              value: "true"
+{{- if hasKey .Values.workerVnc.sessionDefaults "headless" }}
+            - name: WORKER_SESSION_DEFAULTS__HEADLESS
+              value: "{{ .Values.workerVnc.sessionDefaults.headless }}"
+{{- end }}
+{{- with .Values.workerVnc.extraEnv }}
+{{ toYaml . | indent 12 }}
+{{- end }}
+          ports:
+            - containerPort: {{ .Values.workerVnc.service.port }}
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+{{ toYaml .Values.workerVnc.resources | indent 12 }}
+{{- end }}

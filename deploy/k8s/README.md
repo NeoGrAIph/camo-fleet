@@ -39,6 +39,18 @@ This creates deployments for headless и VNC воркеров (каждый — 
 VNC-сессия. Для внешнего доступа настройте TCP-проксирование этих портов (Ingress TCP/WS маршрут
 или NodePort/LoadBalancer). `6900` нужен для noVNC/websockify, `5900` — для прямого VNC-клиента.
 
+## Helm chart
+
+Если предпочтительнее Helm, в каталоге [`deploy/helm`](../helm) есть пакетированный вариант тех же
+манифестов. Он генерирует `CONTROL_WORKERS` автоматически на основе включённых воркеров. Пример
+установки:
+
+```sh
+helm upgrade --install camofleet deploy/helm/camo-fleet \
+  --namespace camofleet --create-namespace \
+  --set global.imageRegistry=REGISTRY.example.com
+```
+
 ## Environment variables
 
 ### Worker + runner
