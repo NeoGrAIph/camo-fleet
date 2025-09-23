@@ -16,7 +16,15 @@ control:
     port: 9000
   publicApiPrefix: /api
   config:
-    workers: []
+    workers:
+      - name: worker-headless
+        url: http://camofleet-camo-fleet-worker:8080
+        supports_vnc: false
+      - name: worker-vnc
+        url: http://camofleet-camo-fleet-worker-vnc:8080
+        supports_vnc: true
+        vnc_ws: wss://camofleet.services.synestra.tech/vnc/{port}/websockify
+        vnc_http: https://camofleet.services.synestra.tech/vnc/{port}/vnc.html
 
 ui:
   replicas: 1
