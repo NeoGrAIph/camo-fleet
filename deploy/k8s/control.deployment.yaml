@@ -9,8 +9,7 @@ data:
     [
       {"name":"worker-headless","url":"http://camofleet-worker:8080","supports_vnc":false},
       {"name":"worker-vnc","url":"http://camofleet-worker-vnc:8080","supports_vnc":true,
-       "vnc_ws":"wss://camofleet.services.synestra.tech/vnc/{port}/websockify",
-       "vnc_http":"https://camofleet.services.synestra.tech/vnc/{port}/vnc.html"}
+       "vnc_ws":"ws://camofleet-worker-vnc:{port}","vnc_http":"http://camofleet-worker-vnc:{port}"}
     ]
   CONTROL_PUBLIC_API_PREFIX: /api
 ---
