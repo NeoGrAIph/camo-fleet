@@ -9,19 +9,44 @@ These manifests provide a minimal deployment ready for a k3s cluster:
 
 ## Prerequisites
 
-1. Build and push the container images. Replace the registry references in the manifests.
+1. Build the container images.
    ```sh
    docker build -t REGISTRY/camofleet-runner:latest -f docker/Dockerfile.runner .
    docker build -t REGISTRY/camofleet-runner-vnc:latest -f docker/Dockerfile.runner-vnc .
    docker build -t REGISTRY/camofleet-worker:latest -f docker/Dockerfile.worker .
    docker build -t REGISTRY/camofleet-control:latest -f docker/Dockerfile.control .
    docker build -t REGISTRY/camofleet-ui:latest -f docker/Dockerfile.ui .
+   ```
+
+   Push the images to a registry that is reachable from the cluster, or load them straight into
+   the k3s containerd runtime if you cannot expose a registry.
+
+   **Registry push**
+   ```sh
    docker push REGISTRY/camofleet-runner:latest
    docker push REGISTRY/camofleet-runner-vnc:latest
    docker push REGISTRY/camofleet-worker:latest
    docker push REGISTRY/camofleet-control:latest
    docker push REGISTRY/camofleet-ui:latest
    ```
+
+   **Directly into k3s** (requires root because k3s uses containerd)
+   ```sh
+   IMAGE_REF=camofleet-worker:latest            # tag that will appear in the manifests
+   CONTAINERD_REF=docker.io/library/${IMAGE_REF} # adjust if you use a custom registry
+   IMAGE_TAR=camofleet-worker.tar
+
+   # optional: drop stale copies in containerd and the local Docker cache
+   sudo ctr -n k8s.io images rm "${CONTAINERD_REF}" || true
+   docker rmi "${IMAGE_REF}" || true
+
+   docker build --no-cache -t "${IMAGE_REF}" -f docker/Dockerfile.worker .
+   docker save "${IMAGE_REF}" -o "${IMAGE_TAR}"
+   sudo ctr -n k8s.io images import "${IMAGE_TAR}"
+   ```
+
+   Repeat for every image (runner, runner-vnc, control, ui). Adjust `IMAGE_REF` and `IMAGE_TAR`
+   per image or refactor into a small shell loop.
 2. Configure an Ingress controller in the cluster (e.g. Traefik, NGINX).
 3. Provision a PersistentVolume if you need to keep session artefacts between restarts.
 
