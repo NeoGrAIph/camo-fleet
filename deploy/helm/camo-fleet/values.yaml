@@ -26,6 +26,7 @@ ui:
     pullPolicy: IfNotPresent
   podAnnotations: {}
   resources: {}
+  controlHost: ""
   service:
     type: ClusterIP
     port: 80

@@ -10,6 +10,8 @@ Most of the values map directly to the original Kubernetes objects:
 - `control`, `ui`, `worker`, `workerVnc` — container images, replica counts, probes and env vars.
 - `ingress` — host name, TLS secret and annotations for the HTTP entrypoint.
 - `global.imageRegistry` — optional registry prefix prepended to every image reference.
+- `ui.controlHost` — optional hostname override for the UI nginx proxy when the control plane is
+  reachable through a custom service or external domain.
 
 By default the chart deploys both a headless and a VNC-capable worker. The control plane config map
 is generated automatically from the enabled workers, but you can override `control.config.workers`
@@ -31,6 +33,17 @@ helm upgrade --install camofleet deploy/helm/camo-fleet \
 
 The example assumes Traefik (the default k3s ingress controller). Adjust `ingress.className` and
 TLS parameters to match your environment.
+
+If the control plane runs behind a custom hostname, point the UI proxy at it with:
+
+```sh
+helm upgrade --install camofleet deploy/helm/camo-fleet \
+  --namespace camofleet --create-namespace \
+  --set ui.controlHost=control.example.com
+```
+
+The port still defaults to `control.service.port`, so update that value as well if the control plane
+listens on a non-default port.
 
 ### Loading images without an external registry
 
