@@ -1,0 +1,95 @@
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+control:
+  replicas: 1
+  image:
+    repository: camofleet-control
+    tag: latest
+    pullPolicy: IfNotPresent
+  podAnnotations: {}
+  resources: {}
+  extraEnv: []
+  service:
+    type: ClusterIP
+    port: 9000
+  publicApiPrefix: /api
+  config:
+    workers: []
+
+ui:
+  replicas: 1
+  image:
+    repository: camofleet-ui
+    tag: latest
+    pullPolicy: IfNotPresent
+  podAnnotations: {}
+  resources: {}
+  service:
+    type: ClusterIP
+    port: 80
+
+worker:
+  enabled: true
+  replicas: 1
+  runnerImage:
+    repository: camofleet-runner
+    tag: latest
+    pullPolicy: IfNotPresent
+  runnerResources: {}
+  runnerExtraEnv: []
+  image:
+    repository: camofleet-worker
+    tag: latest
+    pullPolicy: IfNotPresent
+  podAnnotations: {}
+  resources: {}
+  runnerPort: 8070
+  service:
+    type: ClusterIP
+    port: 8080
+  supportsVnc: false
+  sessionDefaults:
+    headless: true
+  extraEnv: []
+
+workerVnc:
+  enabled: true
+  replicas: 1
+  runnerImage:
+    repository: camofleet-runner-vnc
+    tag: latest
+    pullPolicy: IfNotPresent
+  runnerResources: {}
+  runnerExtraEnv: []
+  image:
+    repository: camofleet-worker
+    tag: latest
+    pullPolicy: IfNotPresent
+  podAnnotations: {}
+  resources: {}
+  runnerPort: 8070
+  service:
+    type: ClusterIP
+    port: 8080
+  vncWsPort: 6900
+  vncRawPort: 5900
+  vncPortRange:
+    ws:
+      min: 6900
+      max: 6900
+    raw:
+      min: 5900
+      max: 5900
+  extraEnv: []
+  sessionDefaults: {}
+
+ingress:
+  enabled: true
+  className: traefik
+  annotations: {}
+  host: camofleet.local
+  tls:
+    enabled: true
+    secretName: camofleet-tls
