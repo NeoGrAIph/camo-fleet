@@ -169,6 +169,12 @@ CI проверяет, что оба инструмента выполнены (
    docker compose down
    ```
 
+## Аутентификация и доступ
+
+- Traefik middleware `camofleet-ui-kc-auth` теперь применяется ко всем путям UI, включая `/api` и `/ws`, чтобы SPA получала REST и WebSocket данные только после успешной аутентификации в Keycloak.
+- Прямые вызовы control-plane (например, `curl https://camofleet.services.synestra.tech/api/workers`) без активной Keycloak-сессии или Bearer-токена вернут `401`/`403`. Для автоматизации используйте тот же OIDC-поток и передавайте полученные куки/токены.
+- Control-plane не содержит внутренней авторизации: защита опирается на middleware ingress'а. Если требуется открыть отдельные публичные маршруты, для них нужно заводить отдельный `IngressRoute` с собственными middleware.
+
 ## Docker-образы
 
 Сборка образов (замените `REGISTRY` на собственный реестр):
@@ -263,6 +269,12 @@ cp .env.example .env
 | `CONTROL_METRICS_ENDPOINT` | `/metrics`     | Путь, на котором публикуются Prometheus-метрики. |
 
 UI не требует переменных окружения — все настройки кодируются в nginx.
+
+При развёртывании через Helm `values.yaml` управляет публичными адресами предпросмотра VNC. Параметр `control.publicHost`
+должен указывать на внешний домен ingress (для Synestra — `camofleet.services.synestra.tech`). Чарт автоматически подставит
+его в `CONTROL_WORKERS`, чтобы API возвращало ссылки вида `https://<домен>/vnc/{port}/vnc.html` и `wss://<домен>/vnc/{port}/websockify`.
+После изменения домена обязательно выполните `helm upgrade` (или перепримените статический ConfigMap), иначе UI продолжит
+получать внутренние URL сервисов `worker-vnc` и предпросмотр будет пустым.
 
 ## Тестирование
 
