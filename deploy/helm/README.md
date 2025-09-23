@@ -1,6 +1,7 @@
 # Camofleet Helm chart
 
 This chart packages the manifests from [`deploy/k8s`](../k8s) so that the stack can be installed on a
+
 k3s cluster with Helm.
 
 ## Configuration
@@ -12,7 +13,9 @@ Most of the values map directly to the original Kubernetes objects:
 - `global.imageRegistry` — optional registry prefix prepended to every image reference.
 
 By default the chart deploys both a headless and a VNC-capable worker. The control plane config map
+
 is generated automatically from the enabled workers, but you can override `control.config.workers`
+
 with a custom array if you need to point the control plane at external nodes.
 
 See `values.yaml` for all configurable options.
@@ -21,7 +24,8 @@ See `values.yaml` for all configurable options.
 
 ```sh
 # package images and push them to a registry that is reachable from the cluster
-# ...
+# (or load them directly into k3s as shown below)
+
 
 helm upgrade --install camofleet deploy/helm/camo-fleet \
   --namespace camofleet --create-namespace \
@@ -30,4 +34,25 @@ helm upgrade --install camofleet deploy/helm/camo-fleet \
 ```
 
 The example assumes Traefik (the default k3s ingress controller). Adjust `ingress.className` and
+
 TLS parameters to match your environment.
+
+### Loading images without an external registry
+
+If the cluster cannot reach a registry, import the images into the k3s containerd runtime:
+
+```sh
+IMAGE_REF=camofleet-worker:latest            # tag referenced by the chart values
+CONTAINERD_REF=docker.io/library/${IMAGE_REF} # change if you build with a custom registry prefix
+IMAGE_TAR=camofleet-worker.tar
+
+# optional: drop stale copies
+sudo ctr -n k8s.io images rm "${CONTAINERD_REF}" || true
+docker rmi "${IMAGE_REF}" || true
+
+docker build --no-cache -t "${IMAGE_REF}" -f docker/Dockerfile.worker .
+docker save "${IMAGE_REF}" -o "${IMAGE_TAR}"
+sudo ctr -n k8s.io images import "${IMAGE_TAR}"
+```
+
+Repeat for the remaining images (runner, runner-vnc, control, ui) before running `helm upgrade --install`.
