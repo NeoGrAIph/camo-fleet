@@ -270,12 +270,6 @@ cp .env.example .env
 
 UI не требует переменных окружения — все настройки кодируются в nginx.
 
-При развёртывании через Helm `values.yaml` управляет публичными адресами предпросмотра VNC. Параметр `control.publicHost`
-должен указывать на внешний домен ingress (для Synestra — `camofleet.services.synestra.tech`). Чарт автоматически подставит
-его в `CONTROL_WORKERS`, чтобы API возвращало ссылки вида `https://<домен>/vnc/{port}/vnc.html` и `wss://<домен>/vnc/{port}/websockify`.
-После изменения домена обязательно выполните `helm upgrade` (или перепримените статический ConfigMap), иначе UI продолжит
-получать внутренние URL сервисов `worker-vnc` и предпросмотр будет пустым.
-
 ## Тестирование
 
 - `worker`: `pytest` — проверяет менеджер сессий и auto-cleanup.

@@ -1,18 +1,11 @@
 {{- $workerService := include "camofleet.worker.fullname" . -}}
 {{- $workerVncService := include "camofleet.workerVnc.fullname" . -}}
-{{- $publicVncHost := .Values.control.publicHost -}}
 {{- $defaultWorkers := list -}}
 {{- if .Values.worker.enabled -}}
 {{- $defaultWorkers = append $defaultWorkers (dict "name" "worker-headless" "url" (printf "http://%s:%d" $workerService (.Values.worker.service.port | int)) "supports_vnc" false) -}}
 {{- end -}}
 {{- if .Values.workerVnc.enabled -}}
-{{- $vncWs := printf "ws://%s:{port}" $workerVncService -}}
-{{- $vncHttp := printf "http://%s:{port}" $workerVncService -}}
-{{- if $publicVncHost -}}
-{{- $vncWs = printf "wss://%s/vnc/{port}/websockify" $publicVncHost -}}
-{{- $vncHttp = printf "https://%s/vnc/{port}/vnc.html" $publicVncHost -}}
-{{- end -}}
-{{- $defaultWorkers = append $defaultWorkers (dict "name" "worker-vnc" "url" (printf "http://%s:%d" $workerVncService (.Values.workerVnc.service.port | int)) "supports_vnc" true "vnc_ws" $vncWs "vnc_http" $vncHttp) -}}
+{{- $defaultWorkers = append $defaultWorkers (dict "name" "worker-vnc" "url" (printf "http://%s:%d" $workerVncService (.Values.workerVnc.service.port | int)) "supports_vnc" true "vnc_ws" (printf "ws://%s:{port}" $workerVncService) "vnc_http" (printf "http://%s:{port}" $workerVncService)) -}}
 {{- end -}}
 {{- $workers := default $defaultWorkers .Values.control.config.workers -}}
 apiVersion: v1
