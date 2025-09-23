@@ -1,0 +1,26 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: camofleet-ui
+  namespace: camofleet
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`camofleet.services.synestra.tech`) && PathPrefix(`/vnc/`)
+      kind: Rule
+      middlewares:
+        - name: camofleet-ui-kc-auth
+        - name: camofleet-vnc-strip
+      services:
+        - name: camofleet-camo-fleet-worker-vnc
+          port: 6900
+    - match: Host(`camofleet.services.synestra.tech`) && PathPrefix(`/`)
+      kind: Rule
+      middlewares:
+        - name: camofleet-ui-kc-auth
+      services:
+        - name: camofleet-camo-fleet-ui
+          port: 80
+  tls:
+    certResolver: lehttp
