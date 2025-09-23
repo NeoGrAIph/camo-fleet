@@ -14,10 +14,26 @@ spec:
     - port: {{ .Values.workerVnc.service.port }}
       targetPort: http
       name: http
-    - port: {{ .Values.workerVnc.vncWsPort }}
-      targetPort: vnc-ws
-      name: vnc-ws
-    - port: {{ .Values.workerVnc.vncRawPort }}
-      targetPort: vnc-raw
-      name: vnc-raw
+{{- $wsMin := int .Values.workerVnc.vncPortRange.ws.min }}
+{{- $wsMax := int .Values.workerVnc.vncPortRange.ws.max }}
+{{- if gt $wsMin $wsMax }}
+{{- fail (printf "workerVnc.vncPortRange.ws.min (%d) must be less than or equal to workerVnc.vncPortRange.ws.max (%d)" $wsMin $wsMax) }}
+{{- end }}
+{{- $wsUpper := int (add $wsMax 1) }}
+{{- range $port := untilStep $wsMin $wsUpper 1 }}
+    - port: {{ $port }}
+      targetPort: {{ $port }}
+      name: {{ printf "vnc-ws-%d" $port }}
+{{- end }}
+{{- $rawMin := int .Values.workerVnc.vncPortRange.raw.min }}
+{{- $rawMax := int .Values.workerVnc.vncPortRange.raw.max }}
+{{- if gt $rawMin $rawMax }}
+{{- fail (printf "workerVnc.vncPortRange.raw.min (%d) must be less than or equal to workerVnc.vncPortRange.raw.max (%d)" $rawMin $rawMax) }}
+{{- end }}
+{{- $rawUpper := int (add $rawMax 1) }}
+{{- range $port := untilStep $rawMin $rawUpper 1 }}
+    - port: {{ $port }}
+      targetPort: {{ $port }}
+      name: {{ printf "vnc-raw-%d" $port }}
+{{- end }}
 {{- end }}

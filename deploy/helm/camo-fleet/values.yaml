@@ -82,14 +82,14 @@ workerVnc:
   service:
     type: ClusterIP
     port: 8080
-  vncWsPort: 6900
-  vncRawPort: 5900
   vncPortRange:
     ws:
       min: 6900
-      max: 6900
+      max: 6904
     raw:
       min: 5900
-      max: 5900
+      max: 5904
+  traefikService:
+    enabled: false
   extraEnv: []
   sessionDefaults: {}

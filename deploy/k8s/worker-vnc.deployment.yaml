@@ -27,18 +27,34 @@ spec:
             - name: RUNNER_VNC_PORT_MIN
               value: "5900"
             - name: RUNNER_VNC_PORT_MAX
-              value: "5900"
+              value: "5904"
             - name: RUNNER_VNC_WS_PORT_MIN
               value: "6900"
             - name: RUNNER_VNC_WS_PORT_MAX
-              value: "6900"
+              value: "6904"
           ports:
             - containerPort: 8070
               name: runner-http
             - containerPort: 6900
-              name: vnc-ws
+              name: vnc-ws-6900
+            - containerPort: 6901
+              name: vnc-ws-6901
+            - containerPort: 6902
+              name: vnc-ws-6902
+            - containerPort: 6903
+              name: vnc-ws-6903
+            - containerPort: 6904
+              name: vnc-ws-6904
             - containerPort: 5900
-              name: vnc-raw
+              name: vnc-raw-5900
+            - containerPort: 5901
+              name: vnc-raw-5901
+            - containerPort: 5902
+              name: vnc-raw-5902
+            - containerPort: 5903
+              name: vnc-raw-5903
+            - containerPort: 5904
+              name: vnc-raw-5904
         - name: worker
           image: REGISTRY/camofleet-worker:latest
           imagePullPolicy: IfNotPresent
@@ -69,8 +85,32 @@ spec:
       targetPort: http
       name: http
     - port: 6900
-      targetPort: vnc-ws
-      name: vnc-ws
+      targetPort: 6900
+      name: vnc-ws-6900
+    - port: 6901
+      targetPort: 6901
+      name: vnc-ws-6901
+    - port: 6902
+      targetPort: 6902
+      name: vnc-ws-6902
+    - port: 6903
+      targetPort: 6903
+      name: vnc-ws-6903
+    - port: 6904
+      targetPort: 6904
+      name: vnc-ws-6904
     - port: 5900
-      targetPort: vnc-raw
-      name: vnc-raw
+      targetPort: 5900
+      name: vnc-raw-5900
+    - port: 5901
+      targetPort: 5901
+      name: vnc-raw-5901
+    - port: 5902
+      targetPort: 5902
+      name: vnc-raw-5902
+    - port: 5903
+      targetPort: 5903
+      name: vnc-raw-5903
+    - port: 5904
+      targetPort: 5904
+      name: vnc-raw-5904
