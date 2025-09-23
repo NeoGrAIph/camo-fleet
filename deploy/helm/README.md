@@ -8,7 +8,6 @@ k3s cluster with Helm.
 Most of the values map directly to the original Kubernetes objects:
 
 - `control`, `ui`, `worker`, `workerVnc` — container images, replica counts, probes and env vars.
-- `ingress` — host name, TLS secret and annotations for the HTTP entrypoint.
 - `global.imageRegistry` — optional registry prefix prepended to every image reference.
 - `ui.controlHost` — optional hostname override for the UI nginx proxy when the control plane is
   reachable through a custom service or external domain.
@@ -27,12 +26,8 @@ See `values.yaml` for all configurable options.
 
 helm upgrade --install camofleet deploy/helm/camo-fleet \
   --namespace camofleet --create-namespace \
-  --set global.imageRegistry=myregistry.local \
-  --set ingress.host=camofleet.local
+  --set global.imageRegistry=myregistry.local
 ```
-
-The example assumes Traefik (the default k3s ingress controller). Adjust `ingress.className` and
-TLS parameters to match your environment.
 
 If the control plane runs behind a custom hostname, point the UI proxy at it with:
 
@@ -45,16 +40,27 @@ helm upgrade --install camofleet deploy/helm/camo-fleet \
 The port still defaults to `control.service.port`, so update that value as well if the control plane
 listens on a non-default port.
 
-### Deploying without an ingress controller
+### Exposing the release
+
+The Helm chart no longer manages ingress resources. Apply or maintain them separately so that they
+match your cluster’s ingress controller and authentication requirements. The plain Kubernetes
+manifest in [`deploy/k8s/ingress.yaml`](../k8s/ingress.yaml) can be reused as a starting point:
+
+```sh
+kubectl apply -n camofleet -f deploy/k8s/ingress.yaml
+```
+
+Before applying the manifest, update the host name, TLS secret and annotations so that they match
+your environment. If you rely on Traefik CRDs (such as an `IngressRoute` with the Keycloak plugin),
+create those manifests alongside the standard ingress resource and apply them manually.
 
 Clusters without an ingress controller can still expose the UI and control plane through the
-services that the chart creates. Disable the built-in ingress manifest and either change the service
-type or rely on `kubectl port-forward` while you experiment:
+services that the chart creates. Switch the service type or rely on `kubectl port-forward` while you
+experiment:
 
 ```sh
 helm upgrade --install camofleet deploy/helm/camo-fleet \
   --namespace camofleet --create-namespace \
-  --set ingress.enabled=false \
   --set ui.service.type=NodePort \
   --set control.service.type=NodePort
 ```
@@ -66,39 +72,6 @@ default `ClusterIP` services and forward the ports instead:
 kubectl port-forward svc/camofleet-ui 8080:80 -n camofleet
 kubectl port-forward svc/camofleet-control 8900:9000 -n camofleet
 ```
-
-### Traefik IngressRoute with Keycloak authentication
-
-If you rely on Traefik’s CRDs and the Keycloak OpenID Connect plugin (for example to protect the UI
-at `https://camofleet.services.synestra.tech`), the chart can now create the required resources for
-you. Disable the standard Kubernetes ingress and enable the Traefik integration:
-
-```sh
-helm upgrade --install camofleet deploy/helm/camo-fleet \
-  --namespace camofleet --create-namespace \
-  --set ingress.enabled=false \
-  --set traefik.enabled=true \
-  --set traefik.middleware.plugin.keycloakopenid.keycloakURL=https://auth.synestra.io \
-  --set traefik.middleware.plugin.keycloakopenid.keycloakRealm=platform \
-  --set traefik.middleware.plugin.keycloakopenid.clientID=camofleet-ui \
-  --set traefik.middleware.plugin.keycloakopenid.clientSecretFile=/run/secrets/camofleet/keycloakClientSecret \
-  --set traefik.middleware.plugin.keycloakopenid.scope="openid profile email" \
-  --set traefik.middleware.plugin.keycloakopenid.userHeaderName=X-User \
-  --set traefik.middleware.plugin.keycloakopenid.userClaimName=preferred_username \
-  --set-string traefik.middleware.plugin.keycloakopenid.ignorePathPrefixes="/api,/ws" \
-  --set traefik.ingressRoute.host=camofleet.services.synestra.tech \
-  --set traefik.ingressRoute.tls.certResolver=lehttp
-```
-
-Override any other values that differ in your environment (for example the TLS secret name, entry
-points or middleware names). The UI already proxies requests to the control service inside the
-release; override `ui.controlHost` only if you expose the control plane through a different DNS
-name.
-
-The Traefik values render a `Middleware` with the Keycloak plugin and an `IngressRoute` that points
-to the UI service. When `traefik.middleware.enabled` is set to `false` you can still reference
-external middlewares via `traefik.ingressRoute.additionalMiddlewares`.
-
 
 ### Loading images without an external registry
 
