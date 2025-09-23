@@ -451,7 +451,7 @@ def apply_vnc_overrides(worker: WorkerConfig, payload: dict[str, Any]) -> dict[s
             continue
 
         try:
-            urlparse(override_template)
+            parsed_override_template = urlparse(override_template)
         except ValueError:
             continue
 
@@ -483,9 +483,15 @@ def apply_vnc_overrides(worker: WorkerConfig, payload: dict[str, Any]) -> dict[s
 
         final_scheme = parsed_override.scheme
 
+        netloc_template = parsed_override_template.netloc
+        hostport_template = netloc_template.rsplit("@", 1)[-1]
+        port_placeholder_in_netloc = port_placeholder_used and ":{port}" in hostport_template
+
         if parsed_override.port is not None:
-            if port_placeholder_used:
+            if port_placeholder_in_netloc:
                 final_port = parsed_override.port
+            elif port_placeholder_used:
+                final_port = None
             else:
                 LOGGER.warning(
                     "Ignoring static port %s from VNC override %r for worker %s",
@@ -495,7 +501,7 @@ def apply_vnc_overrides(worker: WorkerConfig, payload: dict[str, Any]) -> dict[s
                 )
                 final_port = session_port
         else:
-            final_port = session_port
+            final_port = session_port if port_placeholder_in_netloc else None
 
         final_username = (
             parsed_override.username
