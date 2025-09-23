@@ -13,4 +13,4 @@ spec:
       scope: "openid profile email"
       userHeaderName: "X-User"
       userClaimName: "preferred_username"
-      IgnorePathPrefixes: "/api,/ws"
+      # Protect all control-plane surfaces via Keycloak; keep prefixes aligned with public APIs if they ever change.
