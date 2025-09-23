@@ -59,10 +59,16 @@ kubectl apply -k deploy/k8s
 ```
 
 This creates deployments for headless и VNC воркеров (каждый — пара контейнеров worker+runner),
-контрольную плоскость, UI и Ingress. В `worker-vnc` диапазон переменных `RUNNER_VNC_PORT_*` и
-`RUNNER_VNC_WS_PORT_*` зафиксирован на `5900` и `6900`, поэтому одновременно доступна только одна
-VNC-сессия. Для внешнего доступа настройте TCP-проксирование этих портов (Ingress TCP/WS маршрут
-или NodePort/LoadBalancer). `6900` нужен для noVNC/websockify, `5900` — для прямого VNC-клиента.
+контрольную плоскость, UI и Ingress. В `worker-vnc` раннер теперь выделяет диапазон портов
+`5900-5904` для raw-VNC и `6900-6904` для WebSocket-прокси (значения настраиваются через Helm
+values). Сервис Kubernetes публикует каждый порт из диапазона, поэтому несколько VNC-сессий могут
+жить параллельно. Для внешнего доступа прокиньте указанные WebSocket-порты (`6900-6904`) и,
+при необходимости, raw VNC (`5900-5904`) через Ingress TCP/WebSocket, NodePort или
+LoadBalancer. В Traefik используйте отдельный `TraefikService` на порт, как показано в
+[`deploy/traefik/camofleet-ui-external-ir.yaml`](../traefik/camofleet-ui-external-ir.yaml).
+
+При установке через Helm для генерации таких `TraefikService` включите флаг
+`workerVnc.traefikService.enabled=true` (по умолчанию выключен, чтобы не зависеть от CRD Traefik).
 
 ## Helm chart
 

@@ -1,0 +1,28 @@
+{{- if and .Values.workerVnc.enabled .Values.workerVnc.traefikService.enabled }}
+{{- $root := . -}}
+{{- $serviceName := include "camofleet.workerVnc.fullname" $root }}
+{{- $wsMin := int $root.Values.workerVnc.vncPortRange.ws.min }}
+{{- $wsMax := int $root.Values.workerVnc.vncPortRange.ws.max }}
+{{- if gt $wsMin $wsMax }}
+{{- fail (printf "workerVnc.vncPortRange.ws.min (%d) must be less than or equal to workerVnc.vncPortRange.ws.max (%d)" $wsMin $wsMax) }}
+{{- end }}
+{{- $wsUpper := int (add $wsMax 1) }}
+{{- range $index, $port := untilStep $wsMin $wsUpper 1 }}
+{{- if $index }}
+---
+{{- end }}
+apiVersion: traefik.io/v1alpha1
+kind: TraefikService
+metadata:
+  name: {{ printf "%s-%d" $serviceName $port }}
+  labels:
+    app: {{ $serviceName }}
+{{ include "camofleet.labels" $root | indent 4 }}
+spec:
+  weighted:
+    services:
+      - name: {{ $serviceName }}
+        port: {{ $port }}
+        weight: 1
+{{- end }}
+{{- end }}
