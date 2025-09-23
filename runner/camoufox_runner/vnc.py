@@ -86,6 +86,7 @@ class VncProcessManager:
     def __init__(self, settings: RunnerSettings, *, logger: logging.Logger | None = None) -> None:
         self._settings = settings
         self._logger = logger or LOGGER
+        self._capacity = self._calculate_capacity(settings)
         self._pool = VncResourcePool(
             displays=range(settings.vnc_display_min, settings.vnc_display_max + 1),
             vnc_ports=range(settings.vnc_port_min, settings.vnc_port_max + 1),
@@ -94,10 +95,17 @@ class VncProcessManager:
         self._available = all(shutil.which(cmd) for cmd in ("Xvfb", "x11vnc", "websockify"))
         if not self._available:
             self._logger.info("VNC tooling not available; disabling VNC support")
+            self._capacity = 0
 
     @property
     def available(self) -> bool:
         return self._available
+
+    @property
+    def capacity(self) -> int:
+        """Return the number of configured VNC display/port tuples."""
+
+        return self._capacity
 
     async def start_session(self) -> VncSession:
         if not self._available:
@@ -324,6 +332,14 @@ class VncProcessManager:
             )
         return process, tasks
 
+    def _calculate_capacity(self, settings: RunnerSettings) -> int:
+        """Return the number of VNC tuples that can be allocated."""
+
+        display_slots = _range_size(settings.vnc_display_min, settings.vnc_display_max)
+        vnc_slots = _range_size(settings.vnc_port_min, settings.vnc_port_max)
+        ws_slots = _range_size(settings.vnc_ws_port_min, settings.vnc_ws_port_max)
+        return min(display_slots, vnc_slots, ws_slots)
+
 
 async def _drain_stream(
     stream: asyncio.StreamReader | None, prefix: str, logger: logging.Logger
@@ -372,3 +388,9 @@ __all__ = [
     "VncSlot",
     "build_vnc_payload",
 ]
+
+
+def _range_size(start: int, end: int) -> int:
+    if end < start:
+        return 0
+    return end - start + 1

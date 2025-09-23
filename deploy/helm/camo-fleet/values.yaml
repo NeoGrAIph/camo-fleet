@@ -91,5 +91,6 @@ workerVnc:
     raw:
       min: 5900
       max: 5900
+  prewarmVnc: 0
   extraEnv: []
   sessionDefaults: {}

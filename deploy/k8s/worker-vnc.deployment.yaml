@@ -32,6 +32,8 @@ spec:
               value: "6900"
             - name: RUNNER_VNC_WS_PORT_MAX
               value: "6900"
+            - name: RUNNER_PREWARM_VNC
+              value: "0"
           ports:
             - containerPort: 8070
               name: runner-http

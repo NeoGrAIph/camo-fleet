@@ -42,6 +42,8 @@ spec:
               value: "{{ .Values.workerVnc.vncPortRange.ws.min }}"
             - name: RUNNER_VNC_WS_PORT_MAX
               value: "{{ .Values.workerVnc.vncPortRange.ws.max }}"
+            - name: RUNNER_PREWARM_VNC
+              value: "{{ .Values.workerVnc.prewarmVnc }}"
 {{- with .Values.workerVnc.runnerExtraEnv }}
 {{ toYaml . | indent 12 }}
 {{- end }}

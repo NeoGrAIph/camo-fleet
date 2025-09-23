@@ -38,7 +38,13 @@ class PrewarmPool:
         self._launcher = launcher
         self._vnc_manager = vnc_manager
         self._headless_target = max(0, headless_target)
-        self._vnc_target = max(0, vnc_target if vnc_manager.available else 0)
+        requested_vnc = max(0, vnc_target if vnc_manager.available else 0)
+        self._requested_vnc_target = requested_vnc
+        self._vnc_capacity = getattr(vnc_manager, "capacity", 0)
+        if self._vnc_capacity <= 1:
+            self._vnc_target = 0
+        else:
+            self._vnc_target = min(requested_vnc, self._vnc_capacity)
         self._check_interval = check_interval
         self._logger = logger or LOGGER
         self._headless: list[PrewarmedResource] = []
@@ -51,6 +57,18 @@ class PrewarmPool:
     async def start(self) -> None:
         """Start the background loop that keeps the pool filled."""
 
+        if self._requested_vnc_target > 0:
+            if self._vnc_capacity <= 1:
+                self._logger.warning(
+                    "Disabling VNC prewarm: only %d configured slot(s) are available",
+                    self._vnc_capacity,
+                )
+            elif self._vnc_target < self._requested_vnc_target:
+                self._logger.warning(
+                    "Reducing VNC prewarm target from %d to capacity %d",
+                    self._requested_vnc_target,
+                    self._vnc_target,
+                )
         await self.top_up_once()
         if self._should_run_loop():
             self._task = asyncio.create_task(self._loop(), name="camoufox-prewarm")

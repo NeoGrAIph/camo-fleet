@@ -72,11 +72,12 @@ class _BlockingLauncher(_StubLauncher):
 
 
 class _StubVncManager:
-    def __init__(self) -> None:
+    def __init__(self, *, capacity: int = 4) -> None:
         self.available = True
         self.started: list[VncSession] = []
         self.stopped: list[VncSession | None] = []
         self._counter = 0
+        self.capacity = capacity
 
     async def start_session(self) -> VncSession:
         slot = VncSlot(display=100 + self._counter, vnc_port=5900 + self._counter, ws_port=6900 + self._counter)
@@ -158,6 +159,31 @@ async def test_prewarm_pool_replenishes_resources() -> None:
     assert all(server.closed for server in launcher.servers)
     assert any(session is None for session in vnc_manager.stopped)
     assert any(session is not None for session in vnc_manager.stopped)
+
+
+@pytest.mark.anyio
+async def test_prewarm_pool_disables_vnc_when_capacity_low(caplog: pytest.LogCaptureFixture) -> None:
+    launcher = _StubLauncher()
+    vnc_manager = _StubVncManager(capacity=1)
+    pool = PrewarmPool(
+        launcher=launcher,
+        vnc_manager=vnc_manager,
+        headless_target=0,
+        vnc_target=2,
+        check_interval=0.01,
+    )
+
+    with caplog.at_level("WARNING"):
+        await pool.start()
+    try:
+        async with pool._lock:  # type: ignore[attr-defined]
+            assert not pool._vnc  # type: ignore[attr-defined]
+            assert pool._vnc_target == 0  # type: ignore[attr-defined]
+    finally:
+        await pool.close()
+
+    assert not vnc_manager.started
+    assert "Disabling VNC prewarm" in caplog.text
 
 
 @dataclass

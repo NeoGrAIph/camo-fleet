@@ -8,6 +8,8 @@ k3s cluster with Helm.
 Most of the values map directly to the original Kubernetes objects:
 
 - `control`, `ui`, `worker`, `workerVnc` — container images, replica counts, probes and env vars.
+- `workerVnc.prewarmVnc` — количество прогреваемых VNC-сессий (по умолчанию `0`, если экспонируется
+  только один слот).
 - `global.imageRegistry` — optional registry prefix prepended to every image reference.
 - `ui.controlHost` — optional hostname override for the UI nginx proxy when the control plane is
   reachable through a custom service or external domain.

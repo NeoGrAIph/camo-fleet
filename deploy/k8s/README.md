@@ -61,8 +61,13 @@ kubectl apply -k deploy/k8s
 This creates deployments for headless и VNC воркеров (каждый — пара контейнеров worker+runner),
 контрольную плоскость, UI и Ingress. В `worker-vnc` диапазон переменных `RUNNER_VNC_PORT_*` и
 `RUNNER_VNC_WS_PORT_*` зафиксирован на `5900` и `6900`, поэтому одновременно доступна только одна
-VNC-сессия. Для внешнего доступа настройте TCP-проксирование этих портов (Ingress TCP/WS маршрут
-или NodePort/LoadBalancer). `6900` нужен для noVNC/websockify, `5900` — для прямого VNC-клиента.
+VNC-сессия. Поскольку слот всего один, манифесты дополнительно выключают прогрев VNC
+(`RUNNER_PREWARM_VNC=0`): иначе раннер занял бы единственный дисплей ещё до первого запроса. Если
+нужны прогретые VNC-сессии, расширьте диапазоны портов минимум до двух значений и поднимите
+`RUNNER_PREWARM_VNC`.
+
+Для внешнего доступа настройте TCP-проксирование этих портов (Ingress TCP/WS маршрут или
+NodePort/LoadBalancer). `6900` нужен для noVNC/websockify, `5900` — для прямого VNC-клиента.
 
 ## Helm chart
 
