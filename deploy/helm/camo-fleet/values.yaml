@@ -94,3 +94,31 @@ ingress:
   tls:
     enabled: true
     secretName: camofleet-tls
+
+traefik:
+  enabled: false
+  middleware:
+    enabled: true
+    nameOverride: ""
+    plugin:
+      keycloakopenid:
+        keycloakURL: ""
+        keycloakRealm: ""
+        clientID: ""
+        clientSecretFile: ""
+        scope: ""
+        userHeaderName: ""
+        userClaimName: ""
+        ignorePathPrefixes: []
+  ingressRoute:
+    enabled: true
+    nameOverride: ""
+    entryPoints:
+      - websecure
+    host: ""
+    pathPrefix: /
+    additionalMiddlewares: []
+    tls:
+      enabled: true
+      certResolver: ""
+      secretName: ""

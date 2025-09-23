@@ -69,63 +69,35 @@ kubectl port-forward svc/camofleet-control 8900:9000 -n camofleet
 
 ### Traefik IngressRoute with Keycloak authentication
 
-If you use Traefik’s CRDs and the Keycloak OpenID Connect plugin (for example to protect the UI at
-`https://camofleet.services.synestra.tech`), disable the chart’s vanilla ingress resource and apply a
-custom `Middleware` and `IngressRoute` instead. Install the release without the default ingress:
+If you rely on Traefik’s CRDs and the Keycloak OpenID Connect plugin (for example to protect the UI
+at `https://camofleet.services.synestra.tech`), the chart can now create the required resources for
+you. Disable the standard Kubernetes ingress and enable the Traefik integration:
 
 ```sh
 helm upgrade --install camofleet deploy/helm/camo-fleet \
   --namespace camofleet --create-namespace \
-  --set ingress.enabled=false
+  --set ingress.enabled=false \
+  --set traefik.enabled=true \
+  --set traefik.middleware.plugin.keycloakopenid.keycloakURL=https://auth.synestra.io \
+  --set traefik.middleware.plugin.keycloakopenid.keycloakRealm=platform \
+  --set traefik.middleware.plugin.keycloakopenid.clientID=camofleet-ui \
+  --set traefik.middleware.plugin.keycloakopenid.clientSecretFile=/run/secrets/camofleet/keycloakClientSecret \
+  --set traefik.middleware.plugin.keycloakopenid.scope="openid profile email" \
+  --set traefik.middleware.plugin.keycloakopenid.userHeaderName=X-User \
+  --set traefik.middleware.plugin.keycloakopenid.userClaimName=preferred_username \
+  --set-string traefik.middleware.plugin.keycloakopenid.ignorePathPrefixes="/api,/ws" \
+  --set traefik.ingressRoute.host=camofleet.services.synestra.tech \
+  --set traefik.ingressRoute.tls.certResolver=lehttp
 ```
 
-The UI already proxies requests to the control service inside the release; override
-`ui.controlHost` only if you expose the control plane through a different DNS name.
+Override any other values that differ in your environment (for example the TLS secret name, entry
+points or middleware names). The UI already proxies requests to the control service inside the
+release; override `ui.controlHost` only if you expose the control plane through a different DNS
+name.
 
-Then create Traefik resources similar to the following (replace the host, Keycloak realm, client
-details and secret references with your own values):
-
-```yaml
-apiVersion: traefik.io/v1alpha1
-kind: Middleware
-metadata:
-  name: camofleet-ui-kc-auth
-  namespace: camofleet
-spec:
-  plugin:
-    keycloakopenid:
-      keycloakURL: "https://auth.synestra.io"
-      keycloakRealm: "platform"
-      clientID: "camofleet-ui"
-      clientSecretFile: "/run/secrets/camofleet/keycloakClientSecret"
-      scope: "openid profile email"
-      userHeaderName: "X-User"
-      userClaimName: "preferred_username"
-      ignorePathPrefixes: "/api,/ws"
----
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
-metadata:
-  name: camofleet-ui
-  namespace: camofleet
-spec:
-  entryPoints:
-    - websecure
-  routes:
-    - match: Host(`camofleet.services.synestra.tech`) && PathPrefix(`/`)
-      kind: Rule
-      middlewares:
-        - name: camofleet-ui-kc-auth
-      services:
-        - name: camofleet-ui
-          port: 80
-  tls:
-    certResolver: lehttp
-```
-
-Traefik will terminate TLS, enforce Keycloak authentication, and forward traffic to the UI service
-within the cluster. Mount the client secret file into the Traefik pod as required by your
-environment (for example via a Kubernetes secret volume).
+The Traefik values render a `Middleware` with the Keycloak plugin and an `IngressRoute` that points
+to the UI service. When `traefik.middleware.enabled` is set to `false` you can still reference
+external middlewares via `traefik.ingressRoute.additionalMiddlewares`.
 
 
 ### Loading images without an external registry
