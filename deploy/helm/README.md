@@ -127,6 +127,7 @@ Traefik will terminate TLS, enforce Keycloak authentication, and forward traffic
 within the cluster. Mount the client secret file into the Traefik pod as required by your
 environment (for example via a Kubernetes secret volume).
 
+
 ### Loading images without an external registry
 
 If the cluster cannot reach a registry, import the images into the k3s containerd runtime:
