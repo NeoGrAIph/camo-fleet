@@ -23,6 +23,27 @@ spec:
       {{- end }}
     spec:
 {{ include "camofleet.imagePullSecrets" . | indent 6 }}
+{{- $wsMin := int .Values.workerVnc.vncPortRange.ws.min }}
+{{- $wsMax := int .Values.workerVnc.vncPortRange.ws.max }}
+{{- $rawMin := int .Values.workerVnc.vncPortRange.raw.min }}
+{{- $rawMax := int .Values.workerVnc.vncPortRange.raw.max }}
+{{- $httpPort := int .Values.workerVnc.service.port }}
+{{- if gt $wsMin $wsMax }}
+  {{- fail (printf "workerVnc.vncPortRange.ws.min (%d) must be <= ws.max (%d)" $wsMin $wsMax) }}
+{{- end }}
+{{- if gt $rawMin $rawMax }}
+  {{- fail (printf "workerVnc.vncPortRange.raw.min (%d) must be <= raw.max (%d)" $rawMin $rawMax) }}
+{{- end }}
+{{- $overlap := and (le $wsMin $rawMax) (le $rawMin $wsMax) }}
+{{- if $overlap }}
+  {{- fail (printf "workerVnc VNC port ranges overlap: ws %d-%d vs raw %d-%d" $wsMin $wsMax $rawMin $rawMax) }}
+{{- end }}
+{{- if and (ge $httpPort $wsMin) (le $httpPort $wsMax) }}
+  {{- fail (printf "workerVnc.service.port (%d) overlaps ws range %d-%d" $httpPort $wsMin $wsMax) }}
+{{- end }}
+{{- if and (ge $httpPort $rawMin) (le $httpPort $rawMax) }}
+  {{- fail (printf "workerVnc.service.port (%d) overlaps raw range %d-%d" $httpPort $rawMin $rawMax) }}
+{{- end }}
       containers:
         - name: runner
           image: {{ include "camofleet.image" (dict "Values" .Values "repository" .Values.workerVnc.runnerImage.repository "tag" .Values.workerVnc.runnerImage.tag) }}
@@ -48,20 +69,10 @@ spec:
           ports:
             - containerPort: {{ .Values.workerVnc.runnerPort }}
               name: runner-http
-{{- $wsMin := int .Values.workerVnc.vncPortRange.ws.min }}
-{{- $wsMax := int .Values.workerVnc.vncPortRange.ws.max }}
-{{- if gt $wsMin $wsMax }}
-{{- fail (printf "workerVnc.vncPortRange.ws.min (%d) must be less than or equal to workerVnc.vncPortRange.ws.max (%d)" $wsMin $wsMax) }}
-{{- end }}
 {{- $wsUpper := int (add $wsMax 1) }}
 {{- range $port := untilStep $wsMin $wsUpper 1 }}
             - containerPort: {{ $port }}
               name: {{ printf "vnc-ws-%d" $port }}
-{{- end }}
-{{- $rawMin := int .Values.workerVnc.vncPortRange.raw.min }}
-{{- $rawMax := int .Values.workerVnc.vncPortRange.raw.max }}
-{{- if gt $rawMin $rawMax }}
-{{- fail (printf "workerVnc.vncPortRange.raw.min (%d) must be less than or equal to workerVnc.vncPortRange.raw.max (%d)" $rawMin $rawMax) }}
 {{- end }}
 {{- $rawUpper := int (add $rawMax 1) }}
 {{- range $port := untilStep $rawMin $rawUpper 1 }}

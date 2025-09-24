@@ -15,10 +15,11 @@ spec:
       labels:
         app: {{ include "camofleet.ui.fullname" . }}
 {{ include "camofleet.selectorLabels" . | indent 8 }}
-      {{- with .Values.ui.podAnnotations }}
       annotations:
-{{ toYaml . | indent 8 }}
-      {{- end }}
+        checksum/ui-config: {{ include (print $.Template.BasePath "/ui-configmap.yaml") . | sha256sum }}
+        {{- with .Values.ui.podAnnotations }}
+          {{ toYaml . | indent 8 }}
+        {{- end }}
     spec:
 {{ include "camofleet.imagePullSecrets" . | indent 6 }}
       containers:

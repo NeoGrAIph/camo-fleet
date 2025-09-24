@@ -1,4 +1,7 @@
 {{- if and .Values.workerVnc.enabled .Values.workerVnc.ingressRoute.enabled }}
+  {{- if not (has "traefik.io/v1alpha1" .Capabilities.APIVersions) -}}
+    {{- fail "Traefik CRDs (traefik.io/v1alpha1) not found. Install Traefik CRDs or disable workerVnc.ingressRoute.enabled." -}}
+  {{- end -}}
 {{- $stripConfig := .Values.workerVnc.ingressRoute.stripPrefixRegex | default dict }}
 {{- $stripEnabled := $stripConfig.enabled | default false }}
 {{- if $stripEnabled }}

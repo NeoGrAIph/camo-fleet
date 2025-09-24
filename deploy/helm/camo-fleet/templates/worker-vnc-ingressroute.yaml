@@ -1,4 +1,7 @@
 {{- if and .Values.workerVnc.enabled .Values.workerVnc.ingressRoute.enabled }}
+  {{- if not (has "traefik.io/v1alpha1" .Capabilities.APIVersions) -}}
+    {{- fail "Traefik CRDs (traefik.io/v1alpha1) not found. Install Traefik CRDs or disable workerVnc.ingressRoute.enabled." -}}
+  {{- end -}}
 {{- $host := default .Values.ingress.host (.Values.workerVnc.ingressRoute.host | trim) | trim }}
 {{- if not $host }}
 {{- fail "workerVnc.ingressRoute.host must be provided when ingress route is enabled (or set ingress.host)" }}
