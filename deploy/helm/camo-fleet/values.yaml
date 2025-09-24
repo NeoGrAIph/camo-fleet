@@ -16,15 +16,13 @@ control:
     port: 9000
   publicApiPrefix: /api
   config:
-    workers:
-      - name: worker-headless
-        url: http://camofleet-camo-fleet-worker:8080
-        supports_vnc: false
-      - name: worker-vnc
-        url: http://camofleet-camo-fleet-worker-vnc:8080
-        supports_vnc: true
-        vnc_ws: wss://camofleet.services.synestra.tech/vnc/{port}/websockify
-        vnc_http: https://camofleet.services.synestra.tech/vnc/{port}/vnc.html
+    # Leave "workers" unset (null) to use the in-cluster services that are generated
+    # from the enabled worker deployments. Override this array only when the
+    # control plane should talk to external runners.
+    workers: null
+    # Control plane VNC endpoints default to the public overrides declared under
+    # workerVnc.controlOverrides. Set the entries there to match your ingress or
+    # set them to null to use the in-cluster service URLs instead.
 
 ui:
   replicas: 1
@@ -93,3 +91,6 @@ workerVnc:
     enabled: false
   extraEnv: []
   sessionDefaults: {}
+  controlOverrides:
+    ws: wss://camofleet.services.synestra.tech/vnc/{port}/websockify
+    http: https://camofleet.services.synestra.tech/vnc/{port}/vnc.html

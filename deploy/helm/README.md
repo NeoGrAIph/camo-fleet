@@ -13,8 +13,11 @@ Most of the values map directly to the original Kubernetes objects:
   reachable through a custom service or external domain.
 
 By default the chart deploys both a headless and a VNC-capable worker. The control plane config map
-is generated automatically from the enabled workers, but you can override `control.config.workers`
-with a custom array if you need to point the control plane at external nodes.
+is generated automatically from the enabled workers (the `values.yaml` keeps `control.config.workers`
+set to `null` so Helm can inject the in-cluster service URLs). VNC endpoints are rewritten using the
+`workerVnc.controlOverrides` templates so that the UI can connect through your ingress — update the
+defaults to match your public hostnames, or set them to `null` if the UI accesses the workers through
+cluster-internal DNS.
 
 See `values.yaml` for all configurable options.
 

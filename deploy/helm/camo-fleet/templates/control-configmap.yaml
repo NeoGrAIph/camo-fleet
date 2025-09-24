@@ -5,7 +5,21 @@
 {{- $defaultWorkers = append $defaultWorkers (dict "name" "worker-headless" "url" (printf "http://%s:%d" $workerService (.Values.worker.service.port | int)) "supports_vnc" false) -}}
 {{- end -}}
 {{- if .Values.workerVnc.enabled -}}
-{{- $defaultWorkers = append $defaultWorkers (dict "name" "worker-vnc" "url" (printf "http://%s:%d" $workerVncService (.Values.workerVnc.service.port | int)) "supports_vnc" true "vnc_ws" (printf "ws://%s:{port}" $workerVncService) "vnc_http" (printf "http://%s:{port}" $workerVncService)) -}}
+{{- $workerVncConfig := dict "name" "worker-vnc" "url" (printf "http://%s:%d" $workerVncService (.Values.workerVnc.service.port | int)) "supports_vnc" true -}}
+{{- $vncOverrides := default dict .Values.workerVnc.controlOverrides -}}
+{{- $vncWsOverride := index $vncOverrides "ws" -}}
+{{- if $vncWsOverride -}}
+{{- $_ := set $workerVncConfig "vnc_ws" $vncWsOverride -}}
+{{- else -}}
+{{- $_ := set $workerVncConfig "vnc_ws" (printf "ws://%s:{port}" $workerVncService) -}}
+{{- end -}}
+{{- $vncHttpOverride := index $vncOverrides "http" -}}
+{{- if $vncHttpOverride -}}
+{{- $_ := set $workerVncConfig "vnc_http" $vncHttpOverride -}}
+{{- else -}}
+{{- $_ := set $workerVncConfig "vnc_http" (printf "http://%s:{port}" $workerVncService) -}}
+{{- end -}}
+{{- $defaultWorkers = append $defaultWorkers $workerVncConfig -}}
 {{- end -}}
 {{- $workers := default $defaultWorkers .Values.control.config.workers -}}
 apiVersion: v1
