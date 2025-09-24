@@ -49,6 +49,7 @@ The Traefik CRD in [`deploy/traefik/camofleet-ui-external-ir.yaml`](../traefik/c
 only publishes the UI path by design — VNC/noVNC services stay internal unless you add your own
 rules:
 
+
 ```sh
 kubectl apply -n camofleet -f deploy/k8s/ingress.yaml
 ```
