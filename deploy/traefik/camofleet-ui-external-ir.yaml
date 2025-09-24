@@ -10,7 +10,6 @@ spec:
     - match: Host(`camofleet.services.synestra.tech`) && PathPrefix(`/vnc/6900/`)
       kind: Rule
       middlewares:
-        - name: camofleet-ui-kc-auth
         - name: camofleet-vnc-strip
       services:
         - kind: TraefikService
@@ -18,7 +17,6 @@ spec:
     - match: Host(`camofleet.services.synestra.tech`) && PathPrefix(`/vnc/6901/`)
       kind: Rule
       middlewares:
-        - name: camofleet-ui-kc-auth
         - name: camofleet-vnc-strip
       services:
         - kind: TraefikService
@@ -26,7 +24,6 @@ spec:
     - match: Host(`camofleet.services.synestra.tech`) && PathPrefix(`/vnc/6902/`)
       kind: Rule
       middlewares:
-        - name: camofleet-ui-kc-auth
         - name: camofleet-vnc-strip
       services:
         - kind: TraefikService
@@ -34,7 +31,6 @@ spec:
     - match: Host(`camofleet.services.synestra.tech`) && PathPrefix(`/vnc/6903/`)
       kind: Rule
       middlewares:
-        - name: camofleet-ui-kc-auth
         - name: camofleet-vnc-strip
       services:
         - kind: TraefikService
@@ -42,15 +38,12 @@ spec:
     - match: Host(`camofleet.services.synestra.tech`) && PathPrefix(`/vnc/6904/`)
       kind: Rule
       middlewares:
-        - name: camofleet-ui-kc-auth
         - name: camofleet-vnc-strip
       services:
         - kind: TraefikService
           name: camofleet-camo-fleet-worker-vnc-6904
     - match: Host(`camofleet.services.synestra.tech`) && PathPrefix(`/`)
       kind: Rule
-      middlewares:
-        - name: camofleet-ui-kc-auth
       services:
         - name: camofleet-camo-fleet-ui
           port: 80
