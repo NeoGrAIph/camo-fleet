@@ -7,11 +7,11 @@
 {{- $uiRoute := mergeOverwrite (dict "enabled" true "pathPrefix" "/" "middlewares" (list)) (index $routes "ui" | default dict) }}
 {{- $controlRoute := mergeOverwrite (dict "enabled" true "pathPrefix" "/api" "middlewares" (list)) (index $routes "control" | default dict) }}
 {{- $uiPath := default "/" $uiRoute.pathPrefix }}
-{{- if not (hasPrefix $uiPath "/") }}
+{{- if not (hasPrefix "/" $uiPath) }}
 {{- fail (printf "ingress.routes.ui.pathPrefix (%s) must start with '/'" $uiPath) }}
 {{- end }}
 {{- $controlPath := default "/api" $controlRoute.pathPrefix }}
-{{- if not (hasPrefix $controlPath "/") }}
+{{- if not (hasPrefix "/" $controlPath) }}
 {{- fail (printf "ingress.routes.control.pathPrefix (%s) must start with '/'" $controlPath) }}
 {{- end }}
 {{- $uiMiddlewares := concat $globalMiddlewares (default (list) $uiRoute.middlewares) }}
