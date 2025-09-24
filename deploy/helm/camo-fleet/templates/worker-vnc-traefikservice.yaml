@@ -25,6 +25,7 @@ spec:
   weighted:
     services:
       - name: {{ $serviceName }}
+        namespace: {{ $root.Release.Namespace }}
         port: {{ $port }}
         weight: 1
 {{- end }}
