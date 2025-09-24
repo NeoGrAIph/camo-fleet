@@ -9,6 +9,7 @@
 {{- $className := default .Values.ingress.className .Values.workerVnc.ingressRoute.className | trim }}
 {{- $entryPoints := default (list) .Values.workerVnc.ingressRoute.entryPoints }}
 {{- $pathPrefix := default "/vnc" .Values.workerVnc.ingressRoute.pathPrefix }}
+{{- $pathPrefix = trim $pathPrefix }}
 {{- if not (hasPrefix $pathPrefix "/") }}
 {{- fail (printf "workerVnc.ingressRoute.pathPrefix (%s) must start with '/'" $pathPrefix) }}
 {{- end }}
