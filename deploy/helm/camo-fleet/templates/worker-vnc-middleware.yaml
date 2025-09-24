@@ -10,11 +10,8 @@
 {{- if eq $pathBase "" }}
 {{- fail "workerVnc.ingressRoute.pathPrefix cannot be the root path" }}
 {{- end }}
-{{- $stripPattern := $stripConfig.pattern | default "" }}
-{{- if eq $stripPattern "" }}
-{{- $escaped := regexReplaceAll "([\\.^$|?*+()\[\]{}])" $pathBase "\\$1" }}
-{{- $stripPattern = printf "^%s/[0-9]+" $escaped }}
-{{- end }}
+{{- $escaped := regexQuoteMeta $pathBase }}
+{{- $stripPattern := default (printf "^%s/[0-9]+" $escaped) $stripConfig.pattern }}
 {{- $stripName := $stripConfig.name | default (printf "%s-strip" (include "camofleet.workerVnc.fullname" .)) }}
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
