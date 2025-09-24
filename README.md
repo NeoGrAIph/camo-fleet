@@ -49,7 +49,7 @@ GIT_URL="https://github.com/NeoGrAIph/camo-fleet.git" # адрес репози�
 WORKDIR="$HOME/helm/repo/camo-fleet"                  # куда клонировать
 NAMESPACE="camofleet"                                 # namespace в k3s
 INGRESS_HOST="camofleet.services.synestra.tech"      # host для ingress
-INGRESS_CLASS="traefik"                               # класс ingress (опционально)
+INGRESS_CLASS="traefik"                               # класс ingress
 INGRESS_ENTRYPOINTS="websecure"                       # Traefik entryPoints (через запятую)
 INGRESS_TLS_SECRET=""                                 # secretName с TLS-сертификатом (опционально)
 INGRESS_TLS_RESOLVER=""                               # certResolver Traefik (опционально)
@@ -136,8 +136,7 @@ fi
 
 # --- деплой через helm ---
 log "Установка/обновление helm release camofleet..."
-helm upgrade --install camofleet deploy/helm/camo-fleet \
-  "${HELM_ARGS[@]}"
+helm upgrade --install camofleet deploy/helm/camo-fleet "${HELM_ARGS[@]}"
 
 log "Готово ✅"
 ```
