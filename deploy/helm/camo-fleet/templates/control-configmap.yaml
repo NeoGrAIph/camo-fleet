@@ -22,10 +22,10 @@
 {{- $vncPathBase = "/vnc" -}}
 {{- end -}}
 {{- $vncTls := $vncIngress.tls | default dict -}}
-{{- $tlsEnabled := or ($vncTls.enabled) ($vncTls.secretName) ($vncTls.certResolver) -}}
+{{- $tlsEnabled := or (default false $vncTls.enabled) (ne (default "" $vncTls.secretName) "") (ne (default "" $vncTls.certResolver) "") -}}
 {{- if not $tlsEnabled -}}
 {{- $globalTls := .Values.ingress.tls | default dict -}}
-{{- $tlsEnabled = or ($globalTls.enabled) ($globalTls.secretName) ($globalTls.certResolver) -}}
+{{- $tlsEnabled = or (default false $globalTls.enabled) (ne (default "" $globalTls.secretName) "") (ne (default "" $globalTls.certResolver) "") -}}
 {{- end -}}
 {{- $wsScheme := ternary "wss" "ws" $tlsEnabled -}}
 {{- $_ := set $workerVncConfig "vnc_ws" (printf "%s://%s%s/{port}/websockify" $wsScheme $vncHost $vncPathBase) -}}
@@ -44,10 +44,10 @@
 {{- $vncPathBase = "/vnc" -}}
 {{- end -}}
 {{- $vncTls := $vncIngress.tls | default dict -}}
-{{- $tlsEnabled := or ($vncTls.enabled) ($vncTls.secretName) ($vncTls.certResolver) -}}
+{{- $tlsEnabled := or (default false $vncTls.enabled) (ne (default "" $vncTls.secretName) "") (ne (default "" $vncTls.certResolver) "") -}}
 {{- if not $tlsEnabled -}}
 {{- $globalTls := .Values.ingress.tls | default dict -}}
-{{- $tlsEnabled = or ($globalTls.enabled) ($globalTls.secretName) ($globalTls.certResolver) -}}
+{{- $tlsEnabled = or (default false $globalTls.enabled) (ne (default "" $globalTls.secretName) "") (ne (default "" $globalTls.certResolver) "") -}}
 {{- end -}}
 {{- $httpScheme := ternary "https" "http" $tlsEnabled -}}
 {{- $_ := set $workerVncConfig "vnc_http" (printf "%s://%s%s/{port}/vnc.html" $httpScheme $vncHost $vncPathBase) -}}
