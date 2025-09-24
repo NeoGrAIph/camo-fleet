@@ -1,0 +1,92 @@
+{{- if and .Values.workerVnc.enabled .Values.workerVnc.ingressRoute.enabled }}
+{{- $host := default .Values.ingress.host (.Values.workerVnc.ingressRoute.host | trim) | trim }}
+{{- if not $host }}
+{{- fail "workerVnc.ingressRoute.host must be provided when ingress route is enabled (or set ingress.host)" }}
+{{- end }}
+{{- $className := default .Values.ingress.className .Values.workerVnc.ingressRoute.className | trim }}
+{{- $entryPoints := default (list) .Values.workerVnc.ingressRoute.entryPoints }}
+{{- $pathPrefix := default "/vnc" .Values.workerVnc.ingressRoute.pathPrefix }}
+{{- if not (hasPrefix $pathPrefix "/") }}
+{{- fail (printf "workerVnc.ingressRoute.pathPrefix (%s) must start with '/'" $pathPrefix) }}
+{{- end }}
+{{- $pathBase := trimSuffix "/" $pathPrefix }}
+{{- if eq $pathBase "" }}
+{{- fail "workerVnc.ingressRoute.pathPrefix cannot be the root path" }}
+{{- end }}
+{{- $stripConfig := .Values.workerVnc.ingressRoute.stripPrefixRegex | default dict }}
+{{- $stripEnabled := $stripConfig.enabled | default false }}
+{{- $stripPattern := $stripConfig.pattern | default "" }}
+{{- if and $stripEnabled (eq $stripPattern "") }}
+{{- $escaped := regexReplaceAll "([\\.^$|?*+()\[\]{}])" $pathBase "\\$1" }}
+{{- $stripPattern = printf "^%s/[0-9]+" $escaped }}
+{{- end }}
+{{- $stripName := $stripConfig.name | default (printf "%s-strip" (include "camofleet.workerVnc.fullname" .)) }}
+{{- $customMiddlewares := default (list) .Values.workerVnc.ingressRoute.middlewares }}
+{{- $wsMin := int .Values.workerVnc.vncPortRange.ws.min }}
+{{- $wsMax := int .Values.workerVnc.vncPortRange.ws.max }}
+{{- if gt $wsMin $wsMax }}
+{{- fail (printf "workerVnc.vncPortRange.ws.min (%d) must be less than or equal to workerVnc.vncPortRange.ws.max (%d)" $wsMin $wsMax) }}
+{{- end }}
+{{- $serviceName := include "camofleet.workerVnc.fullname" . }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ printf "%s-vnc" $serviceName }}
+  labels:
+    app: {{ $serviceName }}
+{{ include "camofleet.labels" . | indent 4 }}
+{{- if $className }}
+  annotations:
+    kubernetes.io/ingress.class: {{ $className | quote }}
+{{- end }}
+spec:
+{{- if $entryPoints }}
+  entryPoints:
+{{ toYaml $entryPoints | indent 4 }}
+{{- end }}
+  routes:
+{{- $upper := int (add $wsMax 1) }}
+{{- range $port := untilStep $wsMin $upper 1 }}
+    - match: Host(`{{ $host }}`) && PathPrefix(`{{ printf "%s/%d" $pathBase $port }}`)
+      kind: Rule
+{{- if $stripEnabled }}
+      middlewares:
+        - name: {{ $stripName | quote }}
+{{- if $customMiddlewares }}
+{{- range $customMiddlewares }}
+        - name: {{ .name | quote }}
+{{- if .namespace }}
+          namespace: {{ .namespace | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- else if $customMiddlewares }}
+      middlewares:
+{{- range $customMiddlewares }}
+        - name: {{ .name | quote }}
+{{- if .namespace }}
+          namespace: {{ .namespace | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+      services:
+{{- if .Values.workerVnc.traefikService.enabled }}
+        - kind: TraefikService
+          name: {{ printf "%s-%d" $serviceName $port }}
+{{- else }}
+        - name: {{ $serviceName }}
+          port: {{ $port }}
+{{- end }}
+{{- end }}
+{{- $tls := .Values.workerVnc.ingressRoute.tls | default dict }}
+{{- $tlsEnabled := or ($tls.enabled) ($tls.secretName) ($tls.certResolver) }}
+{{- if $tlsEnabled }}
+  tls:
+{{- if $tls.secretName }}
+    secretName: {{ $tls.secretName | quote }}
+{{- end }}
+{{- if $tls.certResolver }}
+    certResolver: {{ $tls.certResolver | quote }}
+{{- end }}
+{{- end }}
+{{- end }}

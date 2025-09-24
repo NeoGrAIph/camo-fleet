@@ -17,8 +17,8 @@ runner-контейнер. Репозиторий содержит четыре 
 - TTL и авто-завершение простаивающих сессий.
 - Простое round-robin распределение сессий между воркерами/runner'ами.
 - Live-экран через VNC/noVNC слой (включается флагом для воркеров с поддержкой VNC).
-- Внешний Traefik Ingress публикует только UI: прямые VNC/noVNC подключения остаются внутри
-  кластера и доступны через UI либо собственный port-forward/ingress.
+- Helm chart включает Traefik IngressRoute для UI и API и может дополнительно публиковать
+  VNC/noVNC через `/vnc/{port}` (с автоматическим `StripPrefix` middleware).
 - REST API без SSE/RBAC/Managed DSL — только базовые CRUD операции над сессиями.
 
 ## Структура
@@ -32,6 +32,126 @@ Camo-fleet/
 ├── ui/                    # Vite + React SPA
 └── worker/                # API worker, проксирующий runner
 ```
+
+## Развёртывание в k3s через Helm
+
+Для публикации UI, control-plane и VNC/noVNC через Traefik в k3s можно воспользоваться скриптом
+ниже. Он клонирует (или обновляет) репозиторий, собирает все Docker-образы, импортирует их в
+containerd k3s и разворачивает Helm release `camofleet` с включёнными IngressRoute/TraefikService
+ресурсами.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+# --- настройте под себя ---
+GIT_URL="https://github.com/NeoGrAIph/camo-fleet.git" # адрес репозитория
+WORKDIR="$HOME/helm/repo/camo-fleet"                  # куда клонировать
+NAMESPACE="camofleet"                                 # namespace в k3s
+INGRESS_HOST="camofleet.services.synestra.tech"      # host для ingress
+INGRESS_CLASS="traefik"                               # класс ingress (опционально)
+INGRESS_ENTRYPOINTS="websecure"                       # Traefik entryPoints (через запятую)
+INGRESS_TLS_SECRET=""                                 # secretName с TLS-сертификатом (опционально)
+INGRESS_TLS_RESOLVER=""                               # certResolver Traefik (опционально)
+CONTAINERD_REF_PREFIX="docker.io/library"             # префикс ref при импорте в containerd
+IMAGES=(
+  "camofleet-runner:docker/Dockerfile.runner"
+  "camofleet-runner-vnc:docker/Dockerfile.runner-vnc"
+  "camofleet-worker:docker/Dockerfile.worker"
+  "camofleet-control:docker/Dockerfile.control"
+  "camofleet-ui:docker/Dockerfile.ui"
+)
+
+# --- функции ---
+log() {
+  echo -e "\033[1;32m[INFO]\033[0m $*"
+}
+
+err() {
+  echo -e "\033[1;31m[ERROR]\033[0m $*" >&2
+}
+
+# --- подготовка репозитория ---
+mkdir -p "$(dirname "$WORKDIR")"
+if [ ! -d "$WORKDIR/.git" ]; then
+  log "Клонирование репозитория..."
+  git clone "$GIT_URL" "$WORKDIR"
+else
+  log "Обновление репозитория..."
+  cd "$WORKDIR"
+  git fetch --all
+  git reset --hard origin/main
+fi
+cd "$WORKDIR"
+
+# --- сборка образов ---
+for mapping in "${IMAGES[@]}"; do
+  IMAGE="${mapping%%:*}"
+  DOCKERFILE="${mapping#*:}"
+  IMAGE_TAG="${IMAGE}:latest"
+  CONTAINERD_REF="${CONTAINERD_REF_PREFIX}/${IMAGE_TAG}"
+
+  log "Удаление старого образа $IMAGE_TAG (если есть)..."
+  sudo ctr -n k8s.io images rm "${CONTAINERD_REF}" || true
+  docker rmi "${IMAGE_TAG}" || true
+
+  log "Сборка образа $IMAGE_TAG..."
+  docker build -t "${IMAGE_TAG}" -f "${DOCKERFILE}" .
+
+  log "Импорт образа $IMAGE_TAG в containerd..."
+  docker save "${IMAGE_TAG}" -o "${IMAGE}.tar"
+  sudo ctr -n k8s.io images import "${IMAGE}.tar"
+  rm -f "${IMAGE}.tar"
+done
+
+# --- значения Helm ---
+HELM_ARGS=(
+  --namespace "${NAMESPACE}"
+  --create-namespace
+  --set ingress.enabled=true
+  --set "ingress.host=${INGRESS_HOST}"
+  --set-string "ingress.className=${INGRESS_CLASS}"
+  --set "workerVnc.ingressRoute.enabled=true"
+  --set "workerVnc.traefikService.enabled=true"
+)
+
+if [ -n "${INGRESS_ENTRYPOINTS:-}" ]; then
+  HELM_ARGS+=(--set "ingress.entryPoints={${INGRESS_ENTRYPOINTS}}")
+  HELM_ARGS+=(--set "workerVnc.ingressRoute.entryPoints={${INGRESS_ENTRYPOINTS}}")
+fi
+
+if [ -n "${INGRESS_TLS_SECRET:-}" ]; then
+  HELM_ARGS+=(--set ingress.tls.enabled=true)
+  HELM_ARGS+=(--set "ingress.tls.secretName=${INGRESS_TLS_SECRET}")
+  HELM_ARGS+=(--set workerVnc.ingressRoute.tls.enabled=true)
+  HELM_ARGS+=(--set "workerVnc.ingressRoute.tls.secretName=${INGRESS_TLS_SECRET}")
+fi
+
+if [ -n "${INGRESS_TLS_RESOLVER:-}" ]; then
+  HELM_ARGS+=(--set ingress.tls.enabled=true)
+  HELM_ARGS+=(--set workerVnc.ingressRoute.tls.enabled=true)
+  HELM_ARGS+=(--set-string "ingress.tls.certResolver=${INGRESS_TLS_RESOLVER}")
+  HELM_ARGS+=(--set-string "workerVnc.ingressRoute.tls.certResolver=${INGRESS_TLS_RESOLVER}")
+fi
+
+# --- деплой через helm ---
+log "Установка/обновление helm release camofleet..."
+helm upgrade --install camofleet deploy/helm/camo-fleet \
+  "${HELM_ARGS[@]}"
+
+log "Готово ✅"
+```
+
+По умолчанию VNC IngressRoute публикует диапазон WebSocket-портов `workerVnc.vncPortRange.ws` под
+путём `/vnc/{port}` и подключает автоматически сгенерированный middleware `StripPrefixRegex`. Если
+нужны дополнительные ограничения (basic auth, IP allowlist и т. п.), добавьте собственные Traefik
+middlewares через списки `ingress.middlewares`, `ingress.routes.*.middlewares` или
+`workerVnc.ingressRoute.middlewares` в `values.yaml` и расширьте массив `HELM_ARGS`. Для управления
+TLS можно задать `INGRESS_TLS_SECRET` (готовый секрет с сертификатом) или `INGRESS_TLS_RESOLVER`
+(имя Traefik certResolver).
+
+Если публикация VNC наружу не требуется, удалите строки с `workerVnc.ingressRoute.*` из `HELM_ARGS`
+или установите значение `workerVnc.ingressRoute.enabled=false`.
 
 ## Архитектура взаимодействия
 

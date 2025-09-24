@@ -2,6 +2,29 @@ global:
   imageRegistry: ""
   imagePullSecrets: []
 
+ingress:
+  enabled: false
+  host: ""
+  className: ""
+  entryPoints:
+    - websecure
+  middlewares: []
+    # - name: traefik-auth
+    #   namespace: traefik
+  tls:
+    enabled: false
+    secretName: ""
+    certResolver: ""
+  routes:
+    ui:
+      enabled: true
+      pathPrefix: /
+      middlewares: []
+    control:
+      enabled: true
+      pathPrefix: /api
+      middlewares: []
+
 control:
   replicas: 1
   image:
@@ -89,8 +112,26 @@ workerVnc:
       max: 5904
   traefikService:
     enabled: false
+  ingressRoute:
+    enabled: false
+    host: ""
+    className: ""
+    entryPoints:
+      - websecure
+    pathPrefix: /vnc
+    middlewares: []
+      # - name: traefik-auth
+      #   namespace: traefik
+    stripPrefixRegex:
+      enabled: true
+      pattern: ""
+      name: ""
+    tls:
+      enabled: false
+      secretName: ""
+      certResolver: ""
   extraEnv: []
   sessionDefaults: {}
   controlOverrides:
-    ws: wss://camofleet.services.synestra.tech/vnc/{port}/websockify
-    http: https://camofleet.services.synestra.tech/vnc/{port}/vnc.html
+    ws: null
+    http: null
