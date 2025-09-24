@@ -1,0 +1,29 @@
+{{- if .Values.ingress.enabled }}
+{{- $host := .Values.ingress.host | trim }}
+{{- $routes := .Values.ingress.routes | default dict }}
+{{- $uiRoute := mergeOverwrite (dict "enabled" true "pathPrefix" "/") (index $routes "ui" | default dict) }}
+{{- $controlRoute := mergeOverwrite (dict "enabled" true "pathPrefix" "/api") (index $routes "control" | default dict) }}
+{{- $scheme := "http" }}
+{{- $tls := .Values.ingress.tls | default dict }}
+{{- if or ($tls.enabled) ($tls.secretName) ($tls.certResolver) }}
+{{- $scheme = "https" }}
+{{- end }}
+{{- if $uiRoute.enabled }}
+UI:      {{ printf "%s://%s%s" $scheme $host $uiRoute.pathPrefix }}
+{{- end }}
+{{- if $controlRoute.enabled }}
+Control: {{ printf "%s://%s%s" $scheme $host $controlRoute.pathPrefix }}
+{{- end }}
+{{- else }}
+Ingress is disabled. Services are exposed via ClusterIP:
+  * {{ include "camofleet.ui.fullname" . }} on port {{ .Values.ui.service.port }}
+  * {{ include "camofleet.control.fullname" . }} on port {{ .Values.control.service.port }}
+Use `kubectl port-forward` or create an ingress to access them.
+{{- end }}
+
+{{- if and .Values.workerVnc.enabled .Values.workerVnc.ingressRoute.enabled }}
+workerVnc ingress route is enabled at host {{ default .Values.ingress.host (.Values.workerVnc.ingressRoute.host | trim) | trim }}.
+Ensure Traefik CRDs (traefik.io/v1alpha1) are installed before upgrading this release.
+{{- else if .Values.workerVnc.enabled }}
+Enable `workerVnc.ingressRoute.enabled` to expose browser VNC sessions through Traefik.
+{{- end }}

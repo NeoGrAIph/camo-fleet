@@ -1,0 +1,268 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "ingress": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "host": {
+          "type": "string"
+        },
+        "routes": {
+          "type": "object",
+          "properties": {
+            "ui": {
+              "type": "object",
+              "properties": {
+                "pathPrefix": {
+                  "$ref": "#/definitions/pathPrefix"
+                }
+              }
+            },
+            "control": {
+              "type": "object",
+              "properties": {
+                "pathPrefix": {
+                  "$ref": "#/definitions/pathPrefix"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "control": {
+      "type": "object",
+      "properties": {
+        "service": {
+          "type": "object",
+          "properties": {
+            "port": {
+              "$ref": "#/definitions/port"
+            }
+          }
+        }
+      }
+    },
+    "ui": {
+      "type": "object",
+      "properties": {
+        "service": {
+          "type": "object",
+          "properties": {
+            "port": {
+              "$ref": "#/definitions/port"
+            }
+          }
+        }
+      }
+    },
+    "worker": {
+      "type": "object",
+      "properties": {
+        "runnerPort": {
+          "$ref": "#/definitions/port"
+        },
+        "service": {
+          "type": "object",
+          "properties": {
+            "port": {
+              "$ref": "#/definitions/port"
+            }
+          }
+        }
+      }
+    },
+    "workerVnc": {
+      "type": "object",
+      "properties": {
+        "runnerPort": {
+          "$ref": "#/definitions/port"
+        },
+        "service": {
+          "type": "object",
+          "properties": {
+            "port": {
+              "$ref": "#/definitions/port"
+            }
+          }
+        },
+        "vncPortRange": {
+          "type": "object",
+          "properties": {
+            "ws": {
+              "type": "object",
+              "properties": {
+                "min": {
+                  "$ref": "#/definitions/port"
+                },
+                "max": {
+                  "$ref": "#/definitions/port"
+                }
+              }
+            },
+            "raw": {
+              "type": "object",
+              "properties": {
+                "min": {
+                  "$ref": "#/definitions/port"
+                },
+                "max": {
+                  "$ref": "#/definitions/port"
+                }
+              }
+            }
+          }
+        },
+        "ingressRoute": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "host": {
+              "type": "string"
+            },
+            "pathPrefix": {
+              "$ref": "#/definitions/nonRootPathPrefix"
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    },
+    "pathPrefix": {
+      "type": "string",
+      "pattern": "^/.*"
+    },
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nonRootPathPrefix": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/pathPrefix"
+        },
+        {
+          "not": {
+            "const": "/"
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "ingress": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            },
+            "required": [
+              "enabled"
+            ]
+          }
+        },
+        "required": [
+          "ingress"
+        ]
+      },
+      "then": {
+        "properties": {
+          "ingress": {
+            "properties": {
+              "host": {
+                "$ref": "#/definitions/nonEmptyString"
+              }
+            },
+            "required": [
+              "host"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "workerVnc": {
+            "properties": {
+              "enabled": {
+                "const": true
+              },
+              "ingressRoute": {
+                "properties": {
+                  "enabled": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              }
+            },
+            "required": [
+              "enabled",
+              "ingressRoute"
+            ]
+          }
+        },
+        "required": [
+          "workerVnc"
+        ]
+      },
+      "then": {
+        "anyOf": [
+          {
+            "properties": {
+              "workerVnc": {
+                "properties": {
+                  "ingressRoute": {
+                    "properties": {
+                      "host": {
+                        "$ref": "#/definitions/nonEmptyString"
+                      }
+                    },
+                    "required": [
+                      "host"
+                    ]
+                  }
+                },
+                "required": [
+                  "ingressRoute"
+                ]
+              }
+            }
+          },
+          {
+            "properties": {
+              "ingress": {
+                "properties": {
+                  "host": {
+                    "$ref": "#/definitions/nonEmptyString"
+                  }
+                },
+                "required": [
+                  "host"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
