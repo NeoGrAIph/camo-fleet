@@ -44,7 +44,11 @@ listens on a non-default port.
 
 The Helm chart no longer manages ingress resources. Apply or maintain them separately so that they
 match your cluster’s ingress controller and exposure requirements. The plain Kubernetes
-manifest in [`deploy/k8s/ingress.yaml`](../k8s/ingress.yaml) can be reused as a starting point:
+manifest in [`deploy/k8s/ingress.yaml`](../k8s/ingress.yaml) can be reused as a starting point.
+The Traefik CRD in [`deploy/traefik/camofleet-ui-external-ir.yaml`](../traefik/camofleet-ui-external-ir.yaml)
+only publishes the UI path by design — VNC/noVNC services stay internal unless you add your own
+rules:
+
 
 ```sh
 kubectl apply -n camofleet -f deploy/k8s/ingress.yaml
