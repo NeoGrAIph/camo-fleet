@@ -13,11 +13,11 @@
 {{- if eq $pathBase "" }}
 {{- fail "workerVnc.ingressRoute.pathPrefix cannot be the root path" }}
 {{- end }}
-{{- $stripConfig := .Values.workerVnc.ingressRoute.stripPrefixRegex | default dict }}
+{{- $stripConfig := default (dict) .Values.workerVnc.ingressRoute.stripPrefixRegex }}
 {{- $stripEnabled := $stripConfig.enabled | default false }}
 {{- $stripPattern := $stripConfig.pattern | default "" }}
 {{- if and $stripEnabled (eq $stripPattern "") }}
-{{- $escaped := regexReplaceAll "([\\.^$|?*+()\[\]{}])" $pathBase "\\$1" }}
+{{- $escaped := regexQuoteMeta $pathBase }}
 {{- $stripPattern = printf "^%s/[0-9]+" $escaped }}
 {{- end }}
 {{- $stripName := $stripConfig.name | default (printf "%s-strip" (include "camofleet.workerVnc.fullname" .)) }}
