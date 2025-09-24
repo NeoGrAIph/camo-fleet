@@ -43,16 +43,19 @@ listens on a non-default port.
 ### Exposing the release
 
 The Helm chart no longer manages ingress resources. Apply or maintain them separately so that they
-match your cluster’s ingress controller and authentication requirements. The plain Kubernetes
-manifest in [`deploy/k8s/ingress.yaml`](../k8s/ingress.yaml) can be reused as a starting point:
+match your cluster’s ingress controller and exposure requirements. The plain Kubernetes
+manifest in [`deploy/k8s/ingress.yaml`](../k8s/ingress.yaml) can be reused as a starting point.
+The Traefik CRD in [`deploy/traefik/camofleet-ui-external-ir.yaml`](../traefik/camofleet-ui-external-ir.yaml)
+only publishes the UI path by design — VNC/noVNC services stay internal unless you add your own
+rules:
 
 ```sh
 kubectl apply -n camofleet -f deploy/k8s/ingress.yaml
 ```
 
 Before applying the manifest, update the host name, TLS secret and annotations so that they match
-your environment. If you rely on Traefik CRDs (such as an `IngressRoute` with the Keycloak plugin),
-create those manifests alongside the standard ingress resource and apply them manually.
+your environment. При необходимости ограничить доступ добавьте собственные middleware/правила в
+Ingress или используйте отдельные Traefik CRDs, применяя их вручную.
 
 Clusters without an ingress controller can still expose the UI and control plane through the
 services that the chart creates. Switch the service type or rely on `kubectl port-forward` while you
