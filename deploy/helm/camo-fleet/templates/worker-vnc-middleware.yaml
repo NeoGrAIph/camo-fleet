@@ -7,7 +7,7 @@
 {{- if $stripEnabled }}
 {{- $pathPrefix := default "/vnc" .Values.workerVnc.ingressRoute.pathPrefix }}
 {{- $pathPrefix = trim $pathPrefix }}
-{{- if not (hasPrefix $pathPrefix "/") }}
+{{- if not (hasPrefix "/" $pathPrefix) }}
 {{- fail (printf "workerVnc.ingressRoute.pathPrefix (%s) must start with '/'" $pathPrefix) }}
 {{- end }}
 {{- $pathBase := trimSuffix "/" $pathPrefix }}
