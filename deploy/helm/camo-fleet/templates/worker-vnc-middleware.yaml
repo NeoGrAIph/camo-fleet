@@ -1,0 +1,31 @@
+{{- if and .Values.workerVnc.enabled .Values.workerVnc.ingressRoute.enabled }}
+{{- $stripConfig := .Values.workerVnc.ingressRoute.stripPrefixRegex | default dict }}
+{{- $stripEnabled := $stripConfig.enabled | default false }}
+{{- if $stripEnabled }}
+{{- $pathPrefix := default "/vnc" .Values.workerVnc.ingressRoute.pathPrefix }}
+{{- if not (hasPrefix $pathPrefix "/") }}
+{{- fail (printf "workerVnc.ingressRoute.pathPrefix (%s) must start with '/'" $pathPrefix) }}
+{{- end }}
+{{- $pathBase := trimSuffix "/" $pathPrefix }}
+{{- if eq $pathBase "" }}
+{{- fail "workerVnc.ingressRoute.pathPrefix cannot be the root path" }}
+{{- end }}
+{{- $stripPattern := $stripConfig.pattern | default "" }}
+{{- if eq $stripPattern "" }}
+{{- $escaped := regexReplaceAll "([\\.^$|?*+()\[\]{}])" $pathBase "\\$1" }}
+{{- $stripPattern = printf "^%s/[0-9]+" $escaped }}
+{{- end }}
+{{- $stripName := $stripConfig.name | default (printf "%s-strip" (include "camofleet.workerVnc.fullname" .)) }}
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ $stripName }}
+  labels:
+    app: {{ include "camofleet.workerVnc.fullname" . }}
+{{ include "camofleet.labels" . | indent 4 }}
+spec:
+  stripPrefixRegex:
+    regex:
+      - {{ $stripPattern | quote }}
+{{- end }}
+{{- end }}

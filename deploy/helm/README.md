@@ -11,13 +11,20 @@ Most of the values map directly to the original Kubernetes objects:
 - `global.imageRegistry` — optional registry prefix prepended to every image reference.
 - `ui.controlHost` — optional hostname override for the UI nginx proxy when the control plane is
   reachable through a custom service or external domain.
+- `ingress` — toggles Traefik `IngressRoute` generation for the UI and control plane. Provide a
+  host, optional ingress class, entry points and TLS settings here.
+- `workerVnc.ingressRoute` — Traefik resources for the VNC/noVNC ports. When enabled the chart can
+  publish the entire port range under a path such as `/vnc/{port}` and automatically strip the
+  prefix so that the noVNC assets remain accessible.
+- `workerVnc.traefikService.enabled` — also create dedicated `TraefikService` objects per WebSocket
+  port. Leave disabled if you prefer to reference the Kubernetes service directly from the
+  generated IngressRoutes.
 
 By default the chart deploys both a headless and a VNC-capable worker. The control plane config map
 is generated automatically from the enabled workers (the `values.yaml` keeps `control.config.workers`
-set to `null` so Helm can inject the in-cluster service URLs). VNC endpoints are rewritten using the
-`workerVnc.controlOverrides` templates so that the UI can connect through your ingress — update the
-defaults to match your public hostnames, or set them to `null` if the UI accesses the workers through
-cluster-internal DNS.
+set to `null` so Helm can inject the in-cluster service URLs). When a public ingress is configured
+the chart derives the default VNC URLs (WebSocket and HTTP) from the configured host, TLS settings
+and path prefix, so the UI receives correct external endpoints without additional overrides.
 
 See `values.yaml` for all configurable options.
 
@@ -43,23 +50,37 @@ helm upgrade --install camofleet deploy/helm/camo-fleet \
 The port still defaults to `control.service.port`, so update that value as well if the control plane
 listens on a non-default port.
 
-### Exposing the release
+### Exposing the release with Traefik
 
-The Helm chart no longer manages ingress resources. Apply or maintain them separately so that they
-match your cluster’s ingress controller and exposure requirements. The plain Kubernetes
-manifest in [`deploy/k8s/ingress.yaml`](../k8s/ingress.yaml) can be reused as a starting point.
-The Traefik CRD in [`deploy/traefik/camofleet-ui-external-ir.yaml`](../traefik/camofleet-ui-external-ir.yaml)
-only publishes the UI path by design — VNC/noVNC services stay internal unless you add your own
-rules:
-
+Enable the built-in Traefik resources when the cluster already ships the Traefik CRDs (k3s does by
+default). Provide a host, optional ingress class and (if required) TLS configuration:
 
 ```sh
-kubectl apply -n camofleet -f deploy/k8s/ingress.yaml
+helm upgrade --install camofleet deploy/helm/camo-fleet \
+  --namespace camofleet --create-namespace \
+  --set ingress.enabled=true \
+  --set ingress.host=camofleet.example.com \
+  --set-string ingress.className=traefik \
+  --set ingress.tls.secretName=camofleet-tls
 ```
 
-Before applying the manifest, update the host name, TLS secret and annotations so that they match
-your environment. При необходимости ограничить доступ добавьте собственные middleware/правила в
-Ingress или используйте отдельные Traefik CRDs, применяя их вручную.
+To expose the VNC/noVNC ports under `/vnc/{port}` enable the dedicated IngressRoute. The chart will
+create the `Middleware` needed to strip the prefix and will automatically propagate the resulting
+public URLs to the control plane configuration:
+
+```sh
+helm upgrade --install camofleet deploy/helm/camo-fleet \
+  --namespace camofleet --create-namespace \
+  --set ingress.enabled=true \
+  --set ingress.host=camofleet.example.com \
+  --set workerVnc.ingressRoute.enabled=true
+```
+
+If you prefer referencing Traefik’s custom services instead of the Kubernetes service directly,
+toggle `workerVnc.traefikService.enabled=true`. Additional middlewares can be attached through the
+`ingress.middlewares`, `ingress.routes.*.middlewares` and `workerVnc.ingressRoute.middlewares`
+lists. The default TLS scheme for the generated URLs is inferred from the `tls` sections under
+`ingress` or `workerVnc.ingressRoute`.
 
 Clusters without an ingress controller can still expose the UI and control plane through the
 services that the chart creates. Switch the service type or rely on `kubectl port-forward` while you
