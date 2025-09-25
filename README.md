@@ -7,6 +7,7 @@ runner-контейнер. Репозиторий содержит четыре 
 - **worker** — API-воркер, который проксирует запросы к локальному Camoufox runner'у и отдаёт `wsEndpoint`.
 - **runner** — сервис, запускающий Camoufox и управляющий Playwright server'ом; выпускается в двух вариантах
   образов (headless и с VNC/noVNC).
+- **vnc-gateway** — сервис, который проксирует HTTP/WebSocket трафик noVNC через фиксированный порт.
 - **control-plane** — облегчённый оркестратор, проксирующий HTTP-запросы к воркерам и предоставляющий
   единый REST API для UI.
 - **ui** — React SPA с панелью: список сессий, запуск новых и ссылки на WebSocket/VNC подключения.
@@ -47,7 +48,7 @@ Camo-fleet/
    - Control-plane API: `http://localhost:9000`
    - Headless worker API: `http://localhost:8080`
    - VNC worker API: `http://localhost:8081`
-   - noVNC: `http://localhost:69xx` (`ws://localhost:69xx`) — порт выдаётся динамически из диапазона 6900–6999
+   - VNC gateway: `http://localhost:6080/vnc` — проксирует noVNC/ws трафик на нужный runner-порт
 4. Тесты также можно прогнать внутри контейнеров:
    ```bash
    docker compose -f docker-compose.dev.yml run --rm --entrypoint pytest worker
@@ -104,7 +105,7 @@ Camo-fleet/
 3. После старта сервисов:
    - UI: `http://localhost:8080`
    - Control-plane API: `http://localhost:9000`
-   - noVNC: предпросмотр в UI; фактический порт выбирается автоматически из диапазона `6900-6999`
+   - VNC gateway: `http://localhost:6080/vnc` (UI подставляет `target_port` автоматически)
 4. Для остановки окружения выполните:
    ```powershell
    docker compose down
@@ -119,6 +120,7 @@ docker build -t REGISTRY/camofleet-runner:latest -f docker/Dockerfile.runner .
 docker build -t REGISTRY/camofleet-runner-vnc:latest -f docker/Dockerfile.runner-vnc .
 docker build -t REGISTRY/camofleet-worker:latest -f docker/Dockerfile.worker .
 docker build -t REGISTRY/camofleet-control:latest -f docker/Dockerfile.control .
+docker build -t REGISTRY/camofleet-vnc-gateway:latest -f docker/Dockerfile.vnc-gateway .
 docker build -t REGISTRY/camofleet-ui:latest -f docker/Dockerfile.ui .
 ```
 
@@ -156,7 +158,7 @@ kubectl apply -k deploy/k8s
 | `RUNNER_PREWARM_CHECK_INTERVAL_SECONDS` | `2.0` | Период проверки/дополнения пула тёплых резервов. |
 | `RUNNER_START_URL_WAIT` | `load` | Как долго ждать загрузку `start_url`: `none` (не грузить), `domcontentloaded`, `load`. При значении `none` навигация выполняется клиентом и стартовая вкладка останется пустой (включая VNC). |
 
-Порты и `DISPLAY` выделяются на каждую сессию. Убедитесь, что выбранные диапазоны проброшены наружу (Docker: `6900-6999:6900-6999`, `5900-5999:5900-5999`; Kubernetes — отдельный Ingress/Service или hostNetwork). Для headless‑резервов prewarm используется `headless=true`.
+Порты и `DISPLAY` выделяются на каждую сессию. При использовании VNC gateway достаточно открыть сам шлюз (Docker: порт `6080`, Kubernetes: путь `/vnc`), однако внутри сети контейнеры должны иметь доступ к диапазону `RUNNER_VNC_WS_PORT_MIN`–`RUNNER_VNC_WS_PORT_MAX`. Для headless‑резервов prewarm используется `headless=true`.
 
 ### Worker
 
@@ -173,6 +175,17 @@ kubectl apply -k deploy/k8s
 | ------------------ | --------------------- | ------------------------------------------------ |
 | `CONTROL_WORKERS`  | см. config            | JSON-массив с воркерами: `name`, `url`, `supports_vnc`, `vnc_ws`, `vnc_http`. |
 | `CONTROL_PORT`     | `9000`                | Порт HTTP API.                                   |
+
+### VNC gateway
+
+| Переменная                | Значение по умолчанию | Описание |
+| ------------------------- | --------------------- | -------- |
+| `VNCGATEWAY_HOST`         | `0.0.0.0`             | Адрес, на котором слушает шлюз. |
+| `VNCGATEWAY_PORT`         | `6080`                | Публичный порт HTTP/WebSocket. |
+| `VNCGATEWAY_RUNNER_HOST`  | `runner-vnc`          | DNS-имя runner'а, доступного шлюзу. |
+| `VNCGATEWAY_MIN_PORT`     | `6900`                | Минимальный websockify-порт, который может выдать runner. |
+| `VNCGATEWAY_MAX_PORT`     | `6999`                | Максимальный websockify-порт. |
+| `VNCGATEWAY_REQUEST_TIMEOUT` | `10.0`             | Таймаут HTTP-запросов к runner'у (сек). |
 
 UI не требует переменных окружения — все настройки кодируются в nginx.
 

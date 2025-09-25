@@ -4,6 +4,7 @@ These manifests provide a minimal deployment ready for a k3s cluster:
 
 - `worker` — API-под с sidecar runner'ом (Camoufox) в headless режиме.
 - `worker-vnc` — такая же пара контейнеров, но runner собран с VNC/noVNC.
+- `vnc-gateway` — сервис, который проксирует noVNC/ws трафик через фиксированный порт.
 - `control-plane` — lightweight orchestrator that proxies API requests to workers.
 - `ui` — static React dashboard served by nginx.
 
@@ -15,11 +16,13 @@ These manifests provide a minimal deployment ready for a k3s cluster:
    docker build -t REGISTRY/camofleet-runner-vnc:latest -f docker/Dockerfile.runner-vnc .
    docker build -t REGISTRY/camofleet-worker:latest -f docker/Dockerfile.worker .
    docker build -t REGISTRY/camofleet-control:latest -f docker/Dockerfile.control .
+   docker build -t REGISTRY/camofleet-vnc-gateway:latest -f docker/Dockerfile.vnc-gateway .
    docker build -t REGISTRY/camofleet-ui:latest -f docker/Dockerfile.ui .
    docker push REGISTRY/camofleet-runner:latest
    docker push REGISTRY/camofleet-runner-vnc:latest
    docker push REGISTRY/camofleet-worker:latest
    docker push REGISTRY/camofleet-control:latest
+   docker push REGISTRY/camofleet-vnc-gateway:latest
    docker push REGISTRY/camofleet-ui:latest
    ```
 2. Configure an Ingress controller in the cluster (e.g. Traefik, NGINX).
@@ -34,9 +37,9 @@ kubectl apply -k deploy/k8s
 ```
 
 This creates deployments for headless и VNC воркеров (каждый — пара контейнеров worker+runner),
-контрольную плоскость, UI и Ingress. Для noVNC runner поднимает отдельный порт на каждую сессию
-(по умолчанию диапазон 6900–6999), поэтому для внешнего доступа потребуется проксировать диапазон
-портов либо задействовать hostNetwork.
+шлюз VNC, контрольную плоскость, UI и Ingress. VNC gateway выступает единым входом (`/vnc`),
+поэтому наружу больше не требуется проксировать весь диапазон портов 6900–6999 — сервис держит
+фиксированный порт 6080 и самостоятельно подключается к нужному runner-у внутри кластера.
 
 ## Environment variables
 
@@ -64,12 +67,21 @@ Example value:
     "name": "worker-vnc",
     "url": "http://camofleet-worker-vnc:8080",
     "supports_vnc": true,
-    "vnc_ws": "ws://camofleet-worker-vnc:6900",
-    "vnc_http": "http://camofleet-worker-vnc:6900"
+    "vnc_ws": "wss://camofleet.local/vnc",
+    "vnc_http": "https://camofleet.local/vnc"
   }
 ]
 ```
 Runner автоматически подменяет порт в этих базовых URL на выделенный для конкретной VNC-сессии.
+Замените `camofleet.local` на реальный хост, под которым публикуется Ingress.
+
+### VNC gateway
+
+The gateway accepts HTTP и WebSocket запросы на `/vnc` и перенаправляет их на runner. Основные
+переменные окружения:
+
+- `VNCGATEWAY_RUNNER_HOST` — DNS-имя сервиса с runner-vnc (по умолчанию `camofleet-worker-vnc`).
+- `VNCGATEWAY_MIN_PORT` / `VNCGATEWAY_MAX_PORT` — диапазон websockify-портов, который выделяет runner.
 
 ### UI
 
