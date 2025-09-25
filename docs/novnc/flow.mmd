@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant B as Browser (noVNC UI)
+    participant T as Traefik websecure ingress
+    participant G as worker-vnc gateway (FastAPI)
+    participant R as runner-vnc (Camoufox)
+    participant X as x11vnc (RFB)
+
+    B->>T: GET https://camofleet.example.com/vnc/{id}
+    Note over B,T: TLS terminates on Traefik (entryPoint websecure)
+    T->>G: GET /vnc/{id}
+    G-->>B: HTML + JS (noVNC bundle)
+
+    B->>T: WSS wss://camofleet.example.com/websockify?token={id}
+    T->>G: WS /websockify?token={id}
+    Note over T,G: StripPrefixRegex removes /vnc/{id} before proxying
+
+    G->>R: TCP connect runner-vnc:59xx
+    Note over G,R: Identifier → host/port via GatewaySettings.resolve
+    R->>X: TCP connect 127.0.0.1:59xx
+    X-->>R: RFB handshake & frames
+    R-->>G: TCP frames (RFB)
+    G-->>B: WS frames (binary)

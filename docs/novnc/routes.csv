@@ -1,0 +1,5 @@
+hop,source,request,entrypoint/router,target_service,target_address,backend_protocol,tls_termination,timeout_controls,source_refs
+1,Browser -> Traefik,"https://camofleet.example.com/vnc/{id}",websecure / camofleet-worker-vnc,camofleet-camo-fleet-worker-vnc,worker-vnc:6900,HTTP (noVNC HTML),Traefik (camofleet-tls),Traefik defaults (see middleware strip),README.md L152-L209
+2,Browser -> Traefik,"wss://camofleet.example.com/websockify?token={id}",websecure / camofleet-worker-vnc-websockify,camofleet-camo-fleet-worker-vnc,worker-vnc:6900,WebSocket,Traefik (camofleet-tls),Gateway idle/read 300s/120s,README.md L169-L207; worker-vnc/camofleet_worker_vnc/config.py L25-L45
+3,Gateway -> Runner,"token {id} → runner-vnc:59xx",N/A (internal),runner-vnc,x11vnc on 127.0.0.1:59xx,TCP (RFB),None,Idle 300s, read/write 120s,worker-vnc/camofleet_worker_vnc/config.py L25-L45; runner/camoufox_runner/vnc.py L135-L171
+4,Traefik -> worker-vnc (raw TCP option),"tcp://<host>:6901",entryPoint vnc-ws-6901 / IngressRouteTCP,camofleet-worker-vnc,worker-vnc:6901,TCP (WS passthrough),None (TCP),Not specified,deploy/traefik/camofleet-runner-vnc-6901-irtcp.yaml L1-L12
