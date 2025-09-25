@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 import sys
 from collections.abc import Awaitable, Callable
@@ -42,15 +43,34 @@ from .models import (
 )
 from .service import aclose_worker_clients, worker_client
 
+def _ensure_shared_importable() -> None:
+    """Locate the ``shared`` package when running from an installed wheel."""
+
+    module_path = Path(__file__).resolve()
+    candidates: list[Path] = list(module_path.parents)
+    pythonpath = os.environ.get("PYTHONPATH", "")
+    if pythonpath:
+        candidates.extend(Path(entry) for entry in pythonpath.split(os.pathsep) if entry)
+    candidates.append(Path.cwd())
+
+    seen: set[str] = set()
+    for base in candidates:
+        for root in (base, base.parent):
+            root_str = str(root)
+            if root_str in seen:
+                continue
+            seen.add(root_str)
+            shared_dir = root / "shared"
+            if shared_dir.exists():
+                if root_str not in sys.path:
+                    sys.path.insert(0, root_str)
+                return
+
+
 try:  # pragma: no cover - executed only in developer environments
     from shared import __version__, bridge_websocket
 except ModuleNotFoundError:  # pragma: no cover - fallback when ``shared`` isn't installed
-    repo_root = Path(__file__).resolve().parents[2]
-    shared_dir = repo_root / "shared"
-    if shared_dir.exists():
-        root_str = str(repo_root)
-        if root_str not in sys.path:
-            sys.path.insert(0, root_str)
+    _ensure_shared_importable()
     from shared import __version__, bridge_websocket
 
 LOGGER = logging.getLogger(__name__)
