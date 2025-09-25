@@ -246,8 +246,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
             raise HTTPException(status_code=400, detail={"error": "missing_id"})
         return identifier
 
-    @app.get("/", response_class=HTMLResponse)
-    async def index(request: Request) -> HTMLResponse:
+    async def render_index(request: Request) -> HTMLResponse:
         identifier = extract_identifier(request)
         if identifier is None:
             html = _render_template(
@@ -257,6 +256,14 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
             return HTMLResponse(html, status_code=400)
         html = _render_template("index.html", {"VNC_ID": str(identifier)})
         return HTMLResponse(html)
+
+    @app.get("/", response_class=HTMLResponse)
+    async def index(request: Request) -> HTMLResponse:
+        return await render_index(request)
+
+    @app.get("/vnc/{identifier}", response_class=HTMLResponse)
+    async def prefixed_index(request: Request, identifier: int) -> HTMLResponse:
+        return await render_index(request)
 
     @app.get("/healthz")
     async def health() -> dict[str, str]:
@@ -279,8 +286,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
             return JSONResponse({"error": "unknown_id"}, status_code=404)
         return JSONResponse({"status": "ready"})
 
-    @app.websocket("/websockify")
-    async def websockify_endpoint(websocket: WebSocket) -> None:
+    async def handle_websocket(websocket: WebSocket) -> None:
         try:
             identifier = get_identifier(websocket)
         except HTTPException:
@@ -314,6 +320,14 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
             await websocket.close(code=status.WS_1011_INTERNAL_ERROR, reason="upstream_unreachable")
         finally:
             await state.release()
+
+    @app.websocket("/websockify")
+    async def websockify_endpoint(websocket: WebSocket) -> None:
+        await handle_websocket(websocket)
+
+    @app.websocket("/vnc/{identifier}/websockify")
+    async def prefixed_websockify(websocket: WebSocket, identifier: int) -> None:
+        await handle_websocket(websocket)
 
     return app
 
