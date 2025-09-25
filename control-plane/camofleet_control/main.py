@@ -5,12 +5,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import sys
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from time import perf_counter
 from typing import Any
 from urllib.parse import parse_qs, urlparse, urlunparse
 
 import httpx
+import websockets
 from fastapi import (
     Depends,
     FastAPI,
@@ -29,9 +32,6 @@ from prometheus_client import (
     Histogram,
     generate_latest,
 )
-import websockets
-
-from shared import __version__, bridge_websocket
 
 from .config import ControlSettings, WorkerConfig, load_settings
 from .models import (
@@ -41,6 +41,17 @@ from .models import (
     WorkerStatus,
 )
 from .service import aclose_worker_clients, worker_client
+
+try:  # pragma: no cover - executed only in developer environments
+    from shared import __version__, bridge_websocket
+except ModuleNotFoundError:  # pragma: no cover - fallback when ``shared`` isn't installed
+    repo_root = Path(__file__).resolve().parents[2]
+    shared_dir = repo_root / "shared"
+    if shared_dir.exists():
+        root_str = str(repo_root)
+        if root_str not in sys.path:
+            sys.path.insert(0, root_str)
+    from shared import __version__, bridge_websocket
 
 LOGGER = logging.getLogger(__name__)
 
