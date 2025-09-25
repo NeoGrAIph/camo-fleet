@@ -9,7 +9,7 @@ data:
     [
       {"name":"worker-headless","url":"http://camofleet-worker:8080","supports_vnc":false},
       {"name":"worker-vnc","url":"http://camofleet-worker-vnc:8080","supports_vnc":true,
-       "vnc_ws":"ws://camofleet-worker-vnc:6900","vnc_http":"http://camofleet-worker-vnc:6900"}
+       "vnc_ws":"wss://camofleet.local/vnc","vnc_http":"https://camofleet.local/vnc"}
     ]
   CONTROL_PUBLIC_API_PREFIX: /api
 ---

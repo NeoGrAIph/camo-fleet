@@ -6,6 +6,7 @@ resources:
   - namespace.yaml
   - worker.deployment.yaml
   - worker-vnc.deployment.yaml
+  - vnc-gateway.deployment.yaml
   - control.deployment.yaml
   - ui.deployment.yaml
   - ingress.yaml

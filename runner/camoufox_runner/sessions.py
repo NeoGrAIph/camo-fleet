@@ -16,7 +16,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Iterable
-from urllib.parse import urlencode, urlparse, urlunparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from camoufox import launch_options
 from playwright._impl._driver import compute_driver_executable
@@ -655,12 +655,26 @@ class SessionManager:
             host_part = f"[{hostname}]"
         else:
             host_part = hostname
-        netloc = f"{userinfo}{host_part}:{port}"
+        override_port = None
+        if parsed.port is not None:
+            if parsed.path and parsed.path != "/":
+                override_port = parsed.port
+            elif parsed.query:
+                override_port = parsed.port
+        if override_port is not None:
+            netloc = f"{userinfo}{host_part}:{override_port}"
+        else:
+            netloc = f"{userinfo}{host_part}:{port}"
         base_path = parsed.path.rstrip("/")
         combined_path = f"{base_path}{path_suffix}" if path_suffix else base_path or "/"
         if not combined_path.startswith("/"):
             combined_path = f"/{combined_path}"
-        query = urlencode(query_params) if query_params else ""
+        query_items = parse_qsl(parsed.query, keep_blank_values=True)
+        if query_params:
+            query_items.extend(query_params.items())
+        if override_port is not None and not any(key == "target_port" for key, _ in query_items):
+            query_items.append(("target_port", str(port)))
+        query = urlencode(query_items)
         return urlunparse((scheme, netloc, combined_path, "", query, ""))
 
     async def _wait_for_display_socket(self, slot: VncSlot, process: aio_subprocess.Process) -> None:

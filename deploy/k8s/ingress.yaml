@@ -27,3 +27,10 @@ spec:
                 name: camofleet-control
                 port:
                   name: http
+          - path: /vnc
+            pathType: Prefix
+            backend:
+              service:
+                name: camofleet-vnc-gateway
+                port:
+                  name: http

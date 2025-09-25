@@ -148,6 +148,7 @@ export default function App(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [actionState, setActionState] = useState<ActionState>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [pinnedKeys, setPinnedKeys] = useState<string[]>([]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -199,6 +200,28 @@ export default function App(): JSX.Element {
   const selectedSessionKey = useMemo(
     () => (selectedSession ? sessionKey(selectedSession) : null),
     [selectedSession],
+  );
+
+  useEffect(() => {
+    setPinnedKeys((prev) => {
+      const next = prev.filter((key) =>
+        sessions.some((item) => sessionKey(item) === key && Boolean(item.vnc?.http)),
+      );
+      return next.length === prev.length ? prev : next;
+    });
+  }, [sessions]);
+
+  const pinnedSessions = useMemo(
+    () =>
+      pinnedKeys
+        .map((key) => sessions.find((item) => sessionKey(item) === key) ?? null)
+        .filter((item): item is SessionItem => Boolean(item && item.vnc?.http)),
+    [pinnedKeys, sessions],
+  );
+
+  const isPinned = useMemo(
+    () => (selectedSessionKey ? pinnedKeys.includes(selectedSessionKey) : false),
+    [pinnedKeys, selectedSessionKey],
   );
 
   const stats = useMemo(() => {
@@ -279,6 +302,27 @@ export default function App(): JSX.Element {
   const actionInFlight = (type: ActionState['type'], session: SessionItem | null) => {
     if (!actionState || !session) return false;
     return actionState.type === type && actionState.key === sessionKey(session);
+  };
+
+  const togglePinned = (session: SessionItem) => {
+    const key = sessionKey(session);
+    setPinnedKeys((prev) => {
+      if (prev.includes(key)) {
+        return prev.filter((item) => item !== key);
+      }
+      if (!session.vnc?.http) {
+        return prev;
+      }
+      return [...prev, key];
+    });
+  };
+
+  const removePinned = (key: string) => {
+    setPinnedKeys((prev) => prev.filter((item) => item !== key));
+  };
+
+  const clearPinned = () => {
+    setPinnedKeys([]);
   };
 
   const onThemeToggle = () => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
@@ -620,6 +664,15 @@ export default function App(): JSX.Element {
                     <h4>Live browser</h4>
                     <div className="actions">
                       {selectedSession.vnc?.http ? (
+                        <button
+                          className="btn btn-secondary"
+                          type="button"
+                          onClick={() => togglePinned(selectedSession)}
+                        >
+                          {isPinned ? 'Unpin preview' : 'Pin preview'}
+                        </button>
+                      ) : null}
+                      {selectedSession.vnc?.http ? (
                         <a
                           className="btn btn-secondary"
                           href={selectedSession.vnc.http}
@@ -658,6 +711,44 @@ export default function App(): JSX.Element {
                 <p>Select a session to inspect details, control TTL, or open the live browser.</p>
               </div>
             )}
+            {pinnedSessions.length ? (
+              <div className="pinned-section">
+                <div className="pinned-header">
+                  <h4>Pinned VNC sessions</h4>
+                  <button className="btn btn-link" type="button" onClick={clearPinned}>
+                    Clear all
+                  </button>
+                </div>
+                <div className="pinned-grid">
+                  {pinnedSessions.map((session) => {
+                    const key = sessionKey(session);
+                    return (
+                      <article key={key} className="pinned-card">
+                        <header className="pinned-card-header">
+                          <div className="pinned-card-title">
+                            <span className="pill pill-muted">{session.worker}</span>
+                            <strong className="mono">{session.id}</strong>
+                          </div>
+                          <button
+                            className="btn btn-ghost"
+                            type="button"
+                            onClick={() => removePinned(key)}
+                          >
+                            Remove
+                          </button>
+                        </header>
+                        <iframe
+                          title={`Pinned session ${session.id}`}
+                          key={`${key}-pinned`}
+                          src={buildVncEmbedUrl(session.vnc?.http) ?? undefined}
+                          className="pinned-frame"
+                        />
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
           </section>
         </div>
       </main>
