@@ -2,29 +2,6 @@ global:
   imageRegistry: ""
   imagePullSecrets: []
 
-ingress:
-  enabled: false
-  host: ""
-  className: ""
-  entryPoints:
-    - websecure
-  middlewares: []
-    # - name: traefik-auth
-    #   namespace: traefik
-  tls:
-    enabled: false
-    secretName: ""
-    certResolver: ""
-  routes:
-    ui:
-      enabled: true
-      pathPrefix: /
-      middlewares: []
-    control:
-      enabled: true
-      pathPrefix: /api
-      middlewares: []
-
 control:
   replicas: 1
   image:
@@ -44,8 +21,9 @@ control:
     # control plane should talk to external runners.
     workers: null
     # Control plane VNC endpoints default to the public overrides declared under
-    # workerVnc.controlOverrides. Set the entries there to match your ingress or
-    # set them to null to use the in-cluster service URLs instead.
+    # workerVnc.controlOverrides. Set the entries there to match the ingress
+    # route you create manually or set them to null to use the in-cluster
+    # service URLs instead.
 
 ui:
   replicas: 1
@@ -110,26 +88,6 @@ workerVnc:
     raw:
       min: 5900
       max: 5904
-  traefikService:
-    enabled: false
-  ingressRoute:
-    enabled: false
-    host: ""
-    className: ""
-    entryPoints:
-      - websecure
-    pathPrefix: /vnc
-    middlewares: []
-      # - name: traefik-auth
-      #   namespace: traefik
-    stripPrefixRegex:
-      enabled: true
-      pattern: ""
-      name: ""
-    tls:
-      enabled: false
-      secretName: ""
-      certResolver: ""
   extraEnv: []
   sessionDefaults: {}
   controlOverrides:

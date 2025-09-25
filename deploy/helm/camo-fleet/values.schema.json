@@ -2,38 +2,6 @@
   "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
-    "ingress": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
-        "host": {
-          "type": "string"
-        },
-        "routes": {
-          "type": "object",
-          "properties": {
-            "ui": {
-              "type": "object",
-              "properties": {
-                "pathPrefix": {
-                  "$ref": "#/definitions/pathPrefix"
-                }
-              }
-            },
-            "control": {
-              "type": "object",
-              "properties": {
-                "pathPrefix": {
-                  "$ref": "#/definitions/pathPrefix"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "control": {
       "type": "object",
       "properties": {
@@ -116,20 +84,6 @@
               }
             }
           }
-        },
-        "ingressRoute": {
-          "type": "object",
-          "properties": {
-            "enabled": {
-              "type": "boolean"
-            },
-            "host": {
-              "type": "string"
-            },
-            "pathPrefix": {
-              "$ref": "#/definitions/nonRootPathPrefix"
-            }
-          }
         }
       }
     }
@@ -147,122 +101,6 @@
     "nonEmptyString": {
       "type": "string",
       "minLength": 1
-    },
-    "nonRootPathPrefix": {
-      "allOf": [
-        {
-          "$ref": "#/definitions/pathPrefix"
-        },
-        {
-          "not": {
-            "const": "/"
-          }
-        }
-      ]
     }
-  },
-  "allOf": [
-    {
-      "if": {
-        "properties": {
-          "ingress": {
-            "properties": {
-              "enabled": {
-                "const": true
-              }
-            },
-            "required": [
-              "enabled"
-            ]
-          }
-        },
-        "required": [
-          "ingress"
-        ]
-      },
-      "then": {
-        "properties": {
-          "ingress": {
-            "properties": {
-              "host": {
-                "$ref": "#/definitions/nonEmptyString"
-              }
-            },
-            "required": [
-              "host"
-            ]
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "workerVnc": {
-            "properties": {
-              "enabled": {
-                "const": true
-              },
-              "ingressRoute": {
-                "properties": {
-                  "enabled": {
-                    "const": true
-                  }
-                },
-                "required": [
-                  "enabled"
-                ]
-              }
-            },
-            "required": [
-              "enabled",
-              "ingressRoute"
-            ]
-          }
-        },
-        "required": [
-          "workerVnc"
-        ]
-      },
-      "then": {
-        "anyOf": [
-          {
-            "properties": {
-              "workerVnc": {
-                "properties": {
-                  "ingressRoute": {
-                    "properties": {
-                      "host": {
-                        "$ref": "#/definitions/nonEmptyString"
-                      }
-                    },
-                    "required": [
-                      "host"
-                    ]
-                  }
-                },
-                "required": [
-                  "ingressRoute"
-                ]
-              }
-            }
-          },
-          {
-            "properties": {
-              "ingress": {
-                "properties": {
-                  "host": {
-                    "$ref": "#/definitions/nonEmptyString"
-                  }
-                },
-                "required": [
-                  "host"
-                ]
-              }
-            }
-          }
-        ]
-      }
-    }
-  ]
+  }
 }

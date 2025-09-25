@@ -17,8 +17,9 @@ runner-контейнер. Репозиторий содержит четыре 
 - TTL и авто-завершение простаивающих сессий.
 - Простое round-robin распределение сессий между воркерами/runner'ами.
 - Live-экран через VNC/noVNC слой (включается флагом для воркеров с поддержкой VNC).
-- Helm chart включает Traefik IngressRoute для UI и API и может дополнительно публиковать
-  VNC/noVNC через `/vnc/{port}` (с автоматическим `StripPrefix` middleware).
+- Helm chart разворачивает все сервисы, оставляя публикацию наружу через ingress/Traefik на ваше
+  усмотрение. Ниже описано, как воспроизвести прежние маршруты вручную с пояснениями по каждому
+  значению.
 - REST API без SSE/RBAC/Managed DSL — только базовые CRUD операции над сессиями.
 
 ## Структура
@@ -35,10 +36,9 @@ Camo-fleet/
 
 ## Развёртывание в k3s через Helm
 
-Для публикации UI, control-plane и VNC/noVNC через Traefik в k3s можно воспользоваться скриптом
-ниже. Он клонирует (или обновляет) репозиторий, собирает все Docker-образы, импортирует их в
-containerd k3s и разворачивает Helm release `camofleet` с включёнными IngressRoute/TraefikService
-ресурсами.
+Скрипт ниже автоматизирует подготовку образов и установку Helm release `camofleet` в кластере k3s.
+Ingress/IngressRoute объекты теперь не создаются чартом автоматически, поэтому после установки
+воспользуйтесь инструкциями из раздела «Ручное создание Traefik IngressRoute».
 
 ```bash
 #!/usr/bin/env bash
@@ -48,11 +48,6 @@ set -euo pipefail
 GIT_URL="https://github.com/NeoGrAIph/camo-fleet.git" # адрес репозитория
 WORKDIR="$HOME/helm/repo/camo-fleet"                  # куда клонировать
 NAMESPACE="camofleet"                                 # namespace в k3s
-INGRESS_HOST="camofleet.services.synestra.tech"      # host для ingress
-INGRESS_CLASS="traefik"                               # класс ingress
-INGRESS_ENTRYPOINTS="websecure"                       # Traefik entryPoints (через запятую)
-INGRESS_TLS_SECRET=""                                 # secretName с TLS-сертификатом (опционально)
-INGRESS_TLS_RESOLVER=""                               # certResolver Traefik (опционально)
 CONTAINERD_REF_PREFIX="docker.io/library"             # префикс ref при импорте в containerd
 IMAGES=(
   "camofleet-runner:docker/Dockerfile.runner"
@@ -108,31 +103,7 @@ done
 HELM_ARGS=(
   --namespace "${NAMESPACE}"
   --create-namespace
-  --set ingress.enabled=true
-  --set "ingress.host=${INGRESS_HOST}"
-  --set-string "ingress.className=${INGRESS_CLASS}"
-  --set "workerVnc.ingressRoute.enabled=true"
-  --set "workerVnc.traefikService.enabled=true"
 )
-
-if [ -n "${INGRESS_ENTRYPOINTS:-}" ]; then
-  HELM_ARGS+=(--set "ingress.entryPoints={${INGRESS_ENTRYPOINTS}}")
-  HELM_ARGS+=(--set "workerVnc.ingressRoute.entryPoints={${INGRESS_ENTRYPOINTS}}")
-fi
-
-if [ -n "${INGRESS_TLS_SECRET:-}" ]; then
-  HELM_ARGS+=(--set ingress.tls.enabled=true)
-  HELM_ARGS+=(--set "ingress.tls.secretName=${INGRESS_TLS_SECRET}")
-  HELM_ARGS+=(--set workerVnc.ingressRoute.tls.enabled=true)
-  HELM_ARGS+=(--set "workerVnc.ingressRoute.tls.secretName=${INGRESS_TLS_SECRET}")
-fi
-
-if [ -n "${INGRESS_TLS_RESOLVER:-}" ]; then
-  HELM_ARGS+=(--set ingress.tls.enabled=true)
-  HELM_ARGS+=(--set workerVnc.ingressRoute.tls.enabled=true)
-  HELM_ARGS+=(--set-string "ingress.tls.certResolver=${INGRESS_TLS_RESOLVER}")
-  HELM_ARGS+=(--set-string "workerVnc.ingressRoute.tls.certResolver=${INGRESS_TLS_RESOLVER}")
-fi
 
 # --- деплой через helm ---
 log "Установка/обновление helm release camofleet..."
@@ -141,16 +112,113 @@ helm upgrade --install camofleet deploy/helm/camo-fleet "${HELM_ARGS[@]}"
 log "Готово ✅"
 ```
 
-По умолчанию VNC IngressRoute публикует диапазон WebSocket-портов `workerVnc.vncPortRange.ws` под
-путём `/vnc/{port}` и подключает автоматически сгенерированный middleware `StripPrefixRegex`. Если
-нужны дополнительные ограничения (basic auth, IP allowlist и т. п.), добавьте собственные Traefik
-middlewares через списки `ingress.middlewares`, `ingress.routes.*.middlewares` или
-`workerVnc.ingressRoute.middlewares` в `values.yaml` и расширьте массив `HELM_ARGS`. Для управления
-TLS можно задать `INGRESS_TLS_SECRET` (готовый секрет с сертификатом) или `INGRESS_TLS_RESOLVER`
-(имя Traefik certResolver).
+### Ручное создание Traefik IngressRoute
 
-Если публикация VNC наружу не требуется, удалите строки с `workerVnc.ingressRoute.*` из `HELM_ARGS`
-или установите значение `workerVnc.ingressRoute.enabled=false`.
+Helm release публикует сервисы `camofleet-camo-fleet-ui`, `camofleet-camo-fleet-control` и
+`camofleet-camo-fleet-worker-vnc` (для релиза `camofleet`). Такие имена формируются функциями в
+[`deploy/helm/camo-fleet/templates/_helpers.tpl`](deploy/helm/camo-fleet/templates/_helpers.tpl), а
+порты (80 для UI, 9000 для control, 8080 + диапазоны VNC) заданы в сервисных шаблонах
+[`ui-service.yaml`](deploy/helm/camo-fleet/templates/ui-service.yaml),
+[`control-service.yaml`](deploy/helm/camo-fleet/templates/control-service.yaml) и
+[`worker-vnc-service.yaml`](deploy/helm/camo-fleet/templates/worker-vnc-service.yaml). Используйте
+эти значения при создании Traefik-маршрутов.
+
+1. **HTTP IngressRoute для UI и API.** UI отдает SPA с корня (`/`), а API control-plane слушает на
+   `/api`. Воспроизведите прежнюю конфигурацию Helm через `IngressRoute`:
+
+   ```yaml
+   apiVersion: traefik.io/v1alpha1
+   kind: IngressRoute
+   metadata:
+     name: camofleet
+     namespace: camofleet
+   spec:
+     entryPoints:
+       - websecure            # подставьте ваши entryPoints
+     routes:
+       - match: Host(`camofleet.example.com`) && PathPrefix(`/`)
+         kind: Rule
+         services:
+           - name: camofleet-camo-fleet-ui
+             port: 80
+       - match: Host(`camofleet.example.com`) && PathPrefix(`/api`)
+         kind: Rule
+         services:
+           - name: camofleet-camo-fleet-control
+             port: 9000
+     tls:
+       secretName: camofleet-tls  # опционально: certResolver вместо secretName
+   ```
+
+2. **Middleware для VNC.** VNC/noVNC раннер публикует статику и WebSocket на путях вида
+   `/{port}/websockify` и `/{port}/vnc.html`. Чтобы сохранить человекочитаемый URL `/vnc/{port}`
+   потребуется `StripPrefixRegex`:
+
+   ```yaml
+   apiVersion: traefik.io/v1alpha1
+   kind: Middleware
+   metadata:
+     name: camofleet-worker-vnc-strip
+     namespace: camofleet
+   spec:
+     stripPrefixRegex:
+       regex:
+         - ^/vnc/[0-9]+
+   ```
+
+3. **IngressRoute для VNC.** По умолчанию `worker-vnc-service.yaml` открывает порты 6900-6904 для
+   WebSocket и 5900-5904 для raw-VNC. Создайте маршруты под нужный диапазон (ниже — пример для
+   WebSocket):
+
+   ```yaml
+   apiVersion: traefik.io/v1alpha1
+   kind: IngressRoute
+   metadata:
+     name: camofleet-worker-vnc
+     namespace: camofleet
+   spec:
+     entryPoints:
+       - websecure
+     routes:
+       - match: Host(`camofleet.example.com`) && PathPrefix(`/vnc/6900`)
+         kind: Rule
+         middlewares:
+           - name: camofleet-worker-vnc-strip
+         services:
+           - name: camofleet-camo-fleet-worker-vnc
+             port: 6900
+       - match: Host(`camofleet.example.com`) && PathPrefix(`/vnc/6901`)
+         kind: Rule
+         middlewares:
+           - name: camofleet-worker-vnc-strip
+         services:
+           - name: camofleet-camo-fleet-worker-vnc
+             port: 6901
+       # добавьте остальные порты из диапазона
+     tls:
+       secretName: camofleet-tls
+   ```
+
+4. **Передача публичных URL в control-plane.** Control-plane использует JSON в
+   `CONTROL_WORKERS` для отдачи VNC-ссылок UI. Чарт по умолчанию формирует их из сервисных адресов,
+   но для внешнего ingress задайте overrides, сохранив плейсхолдер `{port}` (его подставляет
+   приложение при выдаче сессии), например:
+
+   ```sh
+   helm upgrade --install camofleet deploy/helm/camo-fleet \
+     --namespace camofleet --create-namespace \
+     --set "workerVnc.controlOverrides.ws=wss://camofleet.example.com/vnc/{port}/websockify" \
+     --set "workerVnc.controlOverrides.http=https://camofleet.example.com/vnc/{port}/vnc.html"
+   ```
+
+   Логика формирования JSON хранится в
+   [`control-configmap.yaml`](deploy/helm/camo-fleet/templates/control-configmap.yaml): при наличии
+   overrides они напрямую попадают в конфиг, иначе используются внутрикластерные адреса
+   `ws://camofleet-camo-fleet-worker-vnc:{port}` и `http://camofleet-camo-fleet-worker-vnc:{port}`.
+
+
+Переиспользуйте примеры из каталога [`deploy/traefik`](deploy/traefik) как шаблон и адаптируйте
+host/entryPoints/TLS под свою инфраструктуру.
 
 ## Архитектура взаимодействия
 
