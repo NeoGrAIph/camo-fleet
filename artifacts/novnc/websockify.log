@@ -1,0 +1,3 @@
+# Placeholder generated in documentation build.
+# Collect from the worker-vnc container (uvicorn/gunicorn stdout) while
+# testing the /websockify WebSocket bridge.

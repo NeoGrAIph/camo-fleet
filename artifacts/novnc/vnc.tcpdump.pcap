@@ -1,0 +1,3 @@
+Placeholder capture. Run inside the runner-vnc container:
+  tcpdump -i any port 5900 -w /tmp/vnc-session.pcap
+Then copy the file to artifacts/novnc/vnc.tcpdump.pcap.

@@ -1,0 +1,3 @@
+# Placeholder generated in documentation build.
+# Recreate by running `docker compose up traefik vnc-gateway runner-vnc` and
+# capturing Traefik access logs while opening https://<host>/vnc/<id>.
