@@ -167,17 +167,19 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
             if item.strip()
         ]
 
-        await websocket.accept(subprotocol=subprotocols[0] if subprotocols else None)
-
         extra_headers = _select_upstream_headers(websocket.headers.items())
 
         try:
-            async with websockets.connect(
+            connect_ctx = websockets.connect(
                 upstream_url,
                 ping_interval=None,
                 subprotocols=subprotocols or None,
                 extra_headers=extra_headers,
-            ) as upstream:
+            )
+            upstream = await connect_ctx.__aenter__()
+            try:
+                await websocket.accept(subprotocol=upstream.subprotocol)
+
                 client_to_upstream = asyncio.create_task(
                     _forward_client_to_upstream(websocket, upstream),
                     name="vnc-gateway-client->upstream",
@@ -196,6 +198,8 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
                     exc = task.exception()
                     if exc:
                         raise exc
+            finally:
+                await connect_ctx.__aexit__(None, None, None)
         except (ConnectionClosedError, ConnectionClosedOK):
             with contextlib.suppress(RuntimeError):
                 await websocket.close()
