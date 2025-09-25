@@ -78,6 +78,16 @@ def test_extract_identifier_uses_path_as_last_resort() -> None:
     assert extract_identifier(request) == 6904
 
 
+def test_extract_identifier_uses_path_params() -> None:
+    request = SimpleNamespace(
+        headers={},
+        query_params={},
+        path_params={"identifier": "6905"},
+        url=DummyUrl(path="/"),
+    )
+    assert extract_identifier(request) == 6905
+
+
 def test_extract_identifier_returns_none_when_missing() -> None:
     request = SimpleNamespace(headers={}, query_params={}, url=DummyUrl(path="/"))
     assert extract_identifier(request) is None
