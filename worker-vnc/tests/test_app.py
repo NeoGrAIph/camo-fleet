@@ -141,3 +141,54 @@ def test_websocket_unknown_identifier_closes_connection() -> None:
             with pytest.raises(WebSocketDisconnect) as excinfo:
                 websocket.receive_text()
             assert excinfo.value.code == status.WS_1008_POLICY_VIOLATION
+
+
+def test_websocket_rejects_when_session_limit_reached() -> None:
+    with _start_echo_server() as (host, port):
+        settings = GatewaySettings(
+            vnc_map_json=json.dumps(
+                {
+                    "6901": {"host": host, "port": port},
+                    "6902": {"host": host, "port": port},
+                }
+            ),
+            max_concurrent_sessions=1,
+            ws_read_timeout_ms=10_000,
+            ws_write_timeout_ms=10_000,
+            tcp_idle_timeout_ms=60_000,
+            ws_ping_interval_ms=10_000,
+        )
+        app = create_app(settings)
+        with TestClient(app) as client:
+            with client.websocket_connect("/websockify?token=6901") as websocket:
+                with pytest.raises(WebSocketDisconnect) as excinfo:
+                    with client.websocket_connect("/websockify?token=6902"):
+                        pass
+                assert excinfo.value.code == status.WS_1013_TRY_AGAIN_LATER
+                reason = getattr(excinfo.value, "reason", None)
+                if reason is not None:
+                    assert reason == "session_limit"
+
+                payload = b"still-open"
+                websocket.send_bytes(payload)
+                assert websocket.receive_bytes() == payload
+
+
+def test_readyz_and_websocket_when_gateway_shutting_down() -> None:
+    settings = GatewaySettings(
+        vnc_map_json=json.dumps({"6903": {"host": "127.0.0.1", "port": 5903}})
+    )
+    app = create_app(settings)
+    state = app.state.gateway_state
+    state._closing = True  # type: ignore[attr-defined]
+
+    with TestClient(app) as client:
+        ready = client.get("/readyz")
+        assert ready.status_code == 503
+        assert ready.json() == {"status": "draining"}
+
+        with pytest.raises(WebSocketDisconnect) as excinfo:
+            with client.websocket_connect("/websockify?token=6903"):
+                pass
+
+        assert excinfo.value.code == status.WS_1013_TRY_AGAIN_LATER
