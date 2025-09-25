@@ -1,3 +1,5 @@
+from urllib.parse import parse_qs, urlparse
+
 import pytest
 
 from camoufox_runner.sessions import SessionManager
@@ -29,7 +31,30 @@ def test_compose_public_url_with_gateway(manager: SessionManager) -> None:
         query_params={"path": "websockify"},
     )
 
-    assert result == "http://localhost:6080/vnc/vnc.html?path=websockify&target_port=6930"
+    parsed = urlparse(result)
+    assert parsed.scheme == "http"
+    assert parsed.netloc == "localhost:6080"
+    assert parsed.path == "/vnc/vnc.html"
+    query = parse_qs(parsed.query)
+    assert query["path"] == ["vnc/websockify"]
+    assert query["target_port"] == ["6930"]
+
+
+def test_compose_public_url_with_gateway_existing_prefix(manager: SessionManager) -> None:
+    result = manager._compose_public_url(
+        "http://localhost:6080/vnc",
+        6930,
+        "/vnc.html",
+        query_params={"path": "vnc/websockify"},
+    )
+
+    parsed = urlparse(result)
+    assert parsed.scheme == "http"
+    assert parsed.netloc == "localhost:6080"
+    assert parsed.path == "/vnc/vnc.html"
+    query = parse_qs(parsed.query)
+    assert query["path"] == ["vnc/websockify"]
+    assert query["target_port"] == ["6930"]
 
 
 def test_compose_public_url_preserves_existing_target(manager: SessionManager) -> None:
