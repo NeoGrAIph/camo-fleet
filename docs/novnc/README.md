@@ -31,6 +31,14 @@ The Docker Compose topology wires these components together with explicit enviro
 3. **Gateway handling:** The FastAPI VNC gateway resolves the `{id}` to a backend host/port (`runner-vnc:590x`), enforces session limits, upgrades the connection, and begins relaying frames while sending periodic pings and enforcing idle/read timeouts.【F:worker-vnc/camofleet_worker_vnc/app.py†L100-L228】【F:worker-vnc/camofleet_worker_vnc/config.py†L25-L128】
 4. **Runner bridge:** The runner launches an Xvfb display, starts `x11vnc` bound to the allocated TCP port, and returns the derived WebSocket URL so the UI connects through the gateway rather than directly to the raw RFB port.【F:runner/camoufox_runner/vnc.py†L120-L174】【F:runner/camoufox_runner/config.py†L24-L68】
 
+## Automated test coverage
+
+* **Gateway service (`worker-vnc`)** – Service-level tests cover HTML rendering, identifier extraction, configuration lookup, and WebSocket proxy behaviour, including round-trips, unknown identifiers, session limit back-pressure, and draining readiness semantics.【F:worker-vnc/tests/test_app.py†L25-L194】【F:worker-vnc/tests/test_config.py†L1-L37】【F:worker-vnc/tests/test_identifiers.py†L1-L74】【F:worker-vnc/tests/test_frontend_assets.py†L1-L9】
+* **Control-plane overrides** – `control-plane/tests/test_vnc_overrides.py` verifies that worker-supplied override templates produce externally routable `http`/`ws` URLs consumed by the UI and noVNC client.【F:control-plane/tests/test_vnc_overrides.py†L1-L120】
+* **Runner orchestration** – Runner tests assert that VNC slots recycle correctly and that launched sessions expose gateway URLs and lifecycle hooks for the noVNC bridge.【F:runner/tests/test_session_components.py†L1-L114】【F:runner/tests/test_vnc_resource_pool.py†L1-L20】
+* **Shared websocket bridge** – The generic websocket bridge used by the gateway is validated to forward frames, ping/pong control frames, and disconnects to the upstream VNC server.【F:shared/tests/test_websocket_bridge.py†L1-L83】
+* **UI affordances** – Front-end tests ensure operators can only launch VNC sessions on workers that advertise VNC support and that polling recovers when those workers disappear.【F:ui/src/components/__tests__/LaunchSessionForm.test.tsx†L1-L82】【F:ui/src/__tests__/App.test.tsx†L1-L80】
+
 ## Observability & verification checklist
 
 * **Access logs:** Capture Traefik access logs while opening the session; expect HTTP `101` responses on `/websockify` and long durations for sustained streams (see `artifacts/novnc/traefik-access.log`).【F:README.md†L152-L209】
