@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import logging
+import sys
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from playwright.async_api import async_playwright
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
-
-from shared import __version__
 
 from .config import RunnerSettings, load_settings
 from .models import (
@@ -19,6 +19,17 @@ from .models import (
     SessionDetail,
 )
 from .sessions import SessionManager, VNCUnavailableError
+
+try:  # pragma: no cover - executed only in developer environments
+    from shared import __version__
+except ModuleNotFoundError:  # pragma: no cover - fallback when ``shared`` isn't installed
+    repo_root = Path(__file__).resolve().parents[2]
+    shared_dir = repo_root / "shared"
+    if shared_dir.exists():
+        root_str = str(repo_root)
+        if root_str not in sys.path:
+            sys.path.insert(0, root_str)
+    from shared import __version__
 
 LOGGER = logging.getLogger(__name__)
 
