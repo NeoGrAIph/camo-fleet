@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Camofleet noVNC</title>
+    <meta name="vnc-id" content="{{VNC_ID}}" />
+    <link rel="stylesheet" href="/static/viewer.css" />
+    <script>
+      window.__VNC_ID__ = '{{VNC_ID}}';
+    </script>
+  </head>
+  <body>
+    <div class="app">
+      <header class="toolbar">
+        <div class="title">Camofleet Viewer</div>
+        <div id="connection-status" class="status status-pending">Connecting…</div>
+      </header>
+      <main class="viewport">
+        <div id="screen" class="screen" tabindex="0" role="application" aria-label="Remote desktop"></div>
+      </main>
+    </div>
+    <script type="module" src="/static/viewer.js"></script>
+  </body>
+</html>

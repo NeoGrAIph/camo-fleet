@@ -1,0 +1,18 @@
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /opt/app
+COPY worker-vnc /opt/app
+ENV PYTHONPATH=/opt/app
+
+ARG INSTALL_MODE=release
+RUN pip install --no-cache-dir --upgrade pip && \
+    if [ "$INSTALL_MODE" = "dev" ]; then \
+      pip install --no-cache-dir -e .[dev]; \
+    else \
+      pip install --no-cache-dir .; \
+    fi
+
+EXPOSE 6900
+CMD ["python", "-m", "camofleet_worker_vnc"]

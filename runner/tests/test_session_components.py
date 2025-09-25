@@ -83,8 +83,8 @@ class _StubVncManager:
         session = VncSession(
             slot=slot,
             display=f":{slot.display}",
-            http_url="http://example/vnc",
-            ws_url="ws://example/websockify",
+            http_url=f"http://example/vnc/{slot.ws_port}",
+            ws_url=f"ws://example/websockify?token={slot.ws_port}",
             processes=[],
             drain_tasks=[],
         )

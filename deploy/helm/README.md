@@ -11,12 +11,10 @@ Most of the values map directly to the original Kubernetes objects:
 - `global.imageRegistry` — optional registry prefix prepended to every image reference.
 - `ui.controlHost` — optional hostname override for the UI nginx proxy when the control plane is
   reachable through a custom service or external domain.
-- `workerVnc.vncPortRange` — port ranges exposed by the VNC runner. Both the raw VNC ports and the
-  WebSocket proxy ports are published through the service. Keep the ranges disjoint and outside of
-  the main HTTP port (`workerVnc.service.port`).
-- `workerVnc.controlOverrides` — optional public URLs for the VNC WebSocket and HTTP entrypoints.
-  The control plane injects them into `CONTROL_WORKERS`; keep the `{port}` placeholder so the
-  runtime can substitute the actual VNC slot.
+- `workerVnc.vncPortRange` — диапазоны портов для `x11vnc` и идентификаторов VNC (`ws`). Raw-порты
+  публикуются сервисом; гейтвей слушает единый порт `workerVnc.gatewayPort`.
+- `workerVnc.controlOverrides` — публичные URL для VNC WebSocket и HTTP. Control-plane подставляет
+  плейсхолдеры `{id}`/`{host}` при выдаче сессии.
 
 By default the chart deploys both a headless and a VNC-capable worker. The control plane config map
 is generated automatically from the enabled workers (the `values.yaml` keeps `control.config.workers`
@@ -55,9 +53,9 @@ the ingress objects yourself so you can review every setting. The root [`README.
 contains a detailed guide with ready-to-adapt manifests for:
 
 - an HTTP `IngressRoute` that maps `/` to the UI service and `/api` to the control service,
-- a `Middleware` with `StripPrefixRegex` for `/vnc/{port}` URLs,
-- an `IngressRoute` that fans out `/vnc/{port}` to each WebSocket port exposed by the worker-vnc
-  service,
+- a `Middleware` with `StripPrefixRegex` for `/vnc/{id}` URLs,
+- IngressRoutes that map `/vnc/{id}` and `/websockify` to the gateway port (`6900`) exposed by the
+  worker-vnc service,
 - Helm overrides that feed the resulting public URLs into the control-plane configuration via
   `workerVnc.controlOverrides`.
 

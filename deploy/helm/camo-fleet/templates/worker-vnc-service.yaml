@@ -1,21 +1,9 @@
 {{- if .Values.workerVnc.enabled }}
-{{- $wsMin := int .Values.workerVnc.vncPortRange.ws.min }}
-{{- $wsMax := int .Values.workerVnc.vncPortRange.ws.max }}
 {{- $rawMin := int .Values.workerVnc.vncPortRange.raw.min }}
 {{- $rawMax := int .Values.workerVnc.vncPortRange.raw.max }}
 {{- $httpPort := int .Values.workerVnc.service.port }}
-{{- if gt $wsMin $wsMax }}
-  {{- fail (printf "workerVnc.vncPortRange.ws.min (%d) must be <= ws.max (%d)" $wsMin $wsMax) }}
-{{- end }}
 {{- if gt $rawMin $rawMax }}
   {{- fail (printf "workerVnc.vncPortRange.raw.min (%d) must be <= raw.max (%d)" $rawMin $rawMax) }}
-{{- end }}
-{{- $overlap := and (le $wsMin $rawMax) (le $rawMin $wsMax) }}
-{{- if $overlap }}
-  {{- fail (printf "workerVnc VNC port ranges overlap: ws %d-%d vs raw %d-%d" $wsMin $wsMax $rawMin $rawMax) }}
-{{- end }}
-{{- if and (ge $httpPort $wsMin) (le $httpPort $wsMax) }}
-  {{- fail (printf "workerVnc.service.port (%d) overlaps ws range %d-%d" $httpPort $wsMin $wsMax) }}
 {{- end }}
 {{- if and (ge $httpPort $rawMin) (le $httpPort $rawMax) }}
   {{- fail (printf "workerVnc.service.port (%d) overlaps raw range %d-%d" $httpPort $rawMin $rawMax) }}
@@ -35,12 +23,9 @@ spec:
     - port: {{ .Values.workerVnc.service.port }}
       targetPort: http
       name: http
-{{- $wsUpper := int (add $wsMax 1) }}
-{{- range $port := untilStep $wsMin $wsUpper 1 }}
-    - port: {{ $port }}
-      targetPort: {{ $port }}
-      name: {{ printf "vnc-ws-%d" $port }}
-{{- end }}
+    - port: {{ .Values.workerVnc.gatewayPort }}
+      targetPort: vnc-ws
+      name: vnc-ws
 {{- $rawUpper := int (add $rawMax 1) }}
 {{- range $port := untilStep $rawMin $rawUpper 1 }}
     - port: {{ $port }}

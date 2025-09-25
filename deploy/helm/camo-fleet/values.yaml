@@ -71,6 +71,13 @@ workerVnc:
     pullPolicy: IfNotPresent
   runnerResources: {}
   runnerExtraEnv: []
+  gatewayImage:
+    repository: camofleet-worker-vnc-gateway
+    tag: latest
+    pullPolicy: IfNotPresent
+  gatewayResources: {}
+  gatewayExtraEnv: []
+  gatewayPort: 6900
   image:
     repository: camofleet-worker
     tag: latest
