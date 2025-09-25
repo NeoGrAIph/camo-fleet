@@ -1,4 +1,4 @@
-"""Pydantic models exposed by the runner API."""
+"""Pydantic models that represent runner API payloads."""
 
 from __future__ import annotations
 
@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field
 
 
 class SessionStatus(str, Enum):
+    """Lifecycle states managed by the runner."""
+
     INIT = "INIT"
     READY = "READY"
     TERMINATING = "TERMINATING"
@@ -17,6 +19,8 @@ class SessionStatus(str, Enum):
 
 
 class SessionCreateRequest(BaseModel):
+    """Payload accepted by ``POST /sessions``."""
+
     headless: bool | None = None
     idle_ttl_seconds: Annotated[int | None, Field(ge=30, le=3600)] = None
     start_url: Annotated[str | None, Field(max_length=1024)] = None
@@ -26,6 +30,8 @@ class SessionCreateRequest(BaseModel):
 
 
 class SessionSummary(BaseModel):
+    """Compact representation returned when listing sessions."""
+
     id: str
     status: SessionStatus
     created_at: datetime
@@ -38,16 +44,22 @@ class SessionSummary(BaseModel):
 
 
 class SessionDetail(SessionSummary):
+    """Extended representation that contains connection details."""
+
     ws_endpoint: str
     vnc_info: dict[str, str | bool | None]
 
 
 class SessionDeleteResponse(BaseModel):
+    """Response body returned by ``DELETE /sessions/{id}``."""
+
     id: str
     status: SessionStatus
 
 
 class HealthResponse(BaseModel):
+    """Simple health payload for readiness probes."""
+
     status: str
     version: str
     checks: dict[str, str]

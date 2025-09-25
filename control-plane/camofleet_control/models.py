@@ -1,4 +1,4 @@
-"""Response models shared across endpoints."""
+"""Pydantic models used by the control-plane API."""
 
 from __future__ import annotations
 
@@ -9,6 +9,8 @@ from pydantic import BaseModel
 
 
 class WorkerStatus(BaseModel):
+    """Snapshot of a worker's health response."""
+
     name: str
     healthy: bool
     detail: dict[str, Any]
@@ -16,6 +18,8 @@ class WorkerStatus(BaseModel):
 
 
 class SessionDescriptor(BaseModel):
+    """Aggregate information about a session across the fleet."""
+
     worker: str
     id: str
     status: str
@@ -32,6 +36,8 @@ class SessionDescriptor(BaseModel):
 
 
 class CreateSessionRequest(BaseModel):
+    """Incoming payload when users request a new session."""
+
     worker: str | None = None
     headless: bool | None = None
     idle_ttl_seconds: int | None = None
@@ -42,7 +48,7 @@ class CreateSessionRequest(BaseModel):
 
 
 class CreateSessionResponse(SessionDescriptor):
-    pass
+    """Session representation returned by POST /sessions."""
 
 
 __all__ = [

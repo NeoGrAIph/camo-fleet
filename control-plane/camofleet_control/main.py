@@ -1,4 +1,4 @@
-"""Control-plane FastAPI app."""
+"""FastAPI application that fronts multiple worker instances."""
 
 from __future__ import annotations
 
@@ -27,14 +27,26 @@ LOGGER = logging.getLogger(__name__)
 
 
 class AppState:
+    """Mutable state shared between request handlers."""
+
     def __init__(self, settings: ControlSettings) -> None:
+        # Persist configuration so dependency functions can reuse it without
+        # reloading environment variables.
         self.settings = settings
+        # Round-robin index used by :meth:`pick_worker` to spread sessions
+        # across the available workers.
         self._rr_index = 0
 
     def list_workers(self) -> list[WorkerConfig]:
+        """Return a copy of the configured worker list."""
+
         return list(self.settings.workers)
 
-    def pick_worker(self, preferred: str | None = None, *, require_vnc: bool = False) -> WorkerConfig:
+    def pick_worker(
+        self, preferred: str | None = None, *, require_vnc: bool = False
+    ) -> WorkerConfig:
+        """Select a worker by name or via round-robin balancing."""
+
         workers = [w for w in self.list_workers() if not require_vnc or w.supports_vnc]
         if preferred:
             for worker in workers:
@@ -49,12 +61,18 @@ class AppState:
 
 
 def get_settings() -> ControlSettings:
+    """Convenience dependency that loads the control-plane settings."""
+
     return load_settings()
 
 
 def create_app(settings: ControlSettings | None = None) -> FastAPI:
+    """Instantiate the FastAPI application used by the control plane."""
+
     cfg = settings or load_settings()
     app = FastAPI(title="Camofleet Control", version="0.1.0")
+    # Relax CORS to allow the UI (which may run on another origin) to call the
+    # API directly without running a separate proxy.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -66,20 +84,28 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     state = AppState(cfg)
 
     def get_state() -> AppState:
+        """Dependency returning the shared application state."""
+
         return state
 
     @app.get("/health")
     async def health(state: AppState = Depends(get_state)) -> dict:
+        """Aggregate worker health into a single response."""
+
         worker_statuses = await gather_worker_status(state.list_workers(), cfg)
         healthy = all(item.healthy for item in worker_statuses) if worker_statuses else False
         return {"status": "ok" if healthy else "degraded", "workers": [s.model_dump() for s in worker_statuses]}
 
     @app.get("/workers", response_model=list[WorkerStatus])
     async def list_workers_endpoint(state: AppState = Depends(get_state)) -> list[WorkerStatus]:
+        """Expose individual worker health data."""
+
         return await gather_worker_status(state.list_workers(), cfg)
 
     @app.get("/sessions", response_model=list[SessionDescriptor])
     async def list_sessions(state: AppState = Depends(get_state)) -> list[SessionDescriptor]:
+        """Collect sessions from each worker and annotate them with public URLs."""
+
         results: list[SessionDescriptor] = []
         for worker in state.list_workers():
             async with worker_client(worker, cfg) as client:
@@ -119,6 +145,8 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         request: CreateSessionRequest,
         state: AppState = Depends(get_state),
     ) -> CreateSessionResponse:
+        """Request a new session from one of the configured workers."""
+
         worker = state.pick_worker(request.worker, require_vnc=request.vnc)
         payload = request.model_dump(exclude_unset=True)
         payload.pop("worker", None)
@@ -136,7 +164,11 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         return CreateSessionResponse(worker=worker.name, **body)
 
     @app.get("/sessions/{worker_name}/{session_id}", response_model=SessionDescriptor)
-    async def get_session(worker_name: str, session_id: str, state: AppState = Depends(get_state)) -> SessionDescriptor:
+    async def get_session(
+        worker_name: str, session_id: str, state: AppState = Depends(get_state)
+    ) -> SessionDescriptor:
+        """Return a single session descriptor from the selected worker."""
+
         worker = state.pick_worker(worker_name)
         async with worker_client(worker, cfg) as client:
             response = await client.get_session(session_id)
@@ -153,7 +185,11 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         return SessionDescriptor(worker=worker.name, **body)
 
     @app.delete("/sessions/{worker_name}/{session_id}")
-    async def delete_session(worker_name: str, session_id: str, state: AppState = Depends(get_state)) -> dict:
+    async def delete_session(
+        worker_name: str, session_id: str, state: AppState = Depends(get_state)
+    ) -> dict:
+        """Forward a session deletion request to a worker."""
+
         worker = state.pick_worker(worker_name)
         async with worker_client(worker, cfg) as client:
             response = await client.delete_session(session_id)
@@ -168,6 +204,8 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         session_id: str,
         state: AppState = Depends(get_state),
     ) -> SessionDescriptor:
+        """Refresh a session's idle timer via the underlying worker."""
+
         worker = state.pick_worker(worker_name)
         async with worker_client(worker, cfg) as client:
             response = await client.touch_session(session_id)
@@ -190,6 +228,8 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         session_id: str,
         state: AppState = Depends(get_state),
     ) -> None:
+        """Proxy WebSocket traffic between the UI and the chosen worker."""
+
         worker = state.pick_worker(worker_name)
         upstream_endpoint = build_worker_ws_endpoint(worker, session_id)
         await websocket.accept()
@@ -229,6 +269,8 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
 
 
 async def gather_worker_status(workers: Iterable[WorkerConfig], cfg: ControlSettings) -> list[WorkerStatus]:
+    """Fetch ``/health`` from every worker in parallel."""
+
     worker_list = list(workers)
 
     async def _fetch_status(worker: WorkerConfig) -> WorkerStatus:
@@ -259,11 +301,15 @@ async def gather_worker_status(workers: Iterable[WorkerConfig], cfg: ControlSett
 
 
 def build_public_ws_endpoint(settings: ControlSettings, worker_name: str, session_id: str) -> str:
+    """Construct the public WebSocket path exposed by the control plane."""
+
     prefix = normalise_public_prefix(settings.public_api_prefix)
     return f"{prefix}/sessions/{worker_name}/{session_id}/ws"
 
 
 def build_worker_ws_endpoint(worker: WorkerConfig, session_id: str) -> str:
+    """Translate the worker HTTP endpoint into a WebSocket URL."""
+
     parsed = urlparse(worker.url)
     scheme = "wss" if parsed.scheme == "https" else "ws"
     path = parsed.path.rstrip("/")
@@ -276,6 +322,8 @@ def build_worker_ws_endpoint(worker: WorkerConfig, session_id: str) -> str:
 
 
 def normalise_public_prefix(prefix: str) -> str:
+    """Ensure the configured prefix is safe to concatenate with paths."""
+
     value = (prefix or "").strip()
     if not value or value == "/":
         return ""
@@ -284,7 +332,11 @@ def normalise_public_prefix(prefix: str) -> str:
     return value.rstrip("/")
 
 
-async def _forward_client_to_upstream(websocket: WebSocket, upstream: websockets.WebSocketClientProtocol) -> None:
+async def _forward_client_to_upstream(
+    websocket: WebSocket, upstream: websockets.WebSocketClientProtocol
+) -> None:
+    """Relay messages arriving from the public client to the worker."""
+
     try:
         while True:
             message = await websocket.receive()
@@ -300,7 +352,11 @@ async def _forward_client_to_upstream(websocket: WebSocket, upstream: websockets
         await upstream.close()
 
 
-async def _forward_upstream_to_client(websocket: WebSocket, upstream: websockets.WebSocketClientProtocol) -> None:
+async def _forward_upstream_to_client(
+    websocket: WebSocket, upstream: websockets.WebSocketClientProtocol
+) -> None:
+    """Relay messages originating from the worker to the public client."""
+
     try:
         async for data in upstream:
             if isinstance(data, (bytes, bytearray)):

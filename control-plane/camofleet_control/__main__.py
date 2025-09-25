@@ -9,6 +9,10 @@ from .main import create_app
 
 
 def main() -> None:
+    """Resolve settings and start the uvicorn server."""
+
+    # Delaying configuration until runtime ensures environment variables set by
+    # the launcher are taken into account.
     settings = load_settings()
     uvicorn.run(create_app(settings), host=settings.host, port=settings.port)
 

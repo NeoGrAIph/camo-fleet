@@ -1,4 +1,4 @@
-"""Session management for the Camoufox runner."""
+"""Session orchestration logic used by the Camoufox runner."""
 
 from __future__ import annotations
 
@@ -32,6 +32,8 @@ BROWSER_SERVER_LAUNCH_TIMEOUT = 45
 
 @dataclass(slots=True, frozen=True)
 class VncSlot:
+    """Tracks the numeric resources reserved for a VNC session."""
+
     display: int
     vnc_port: int
     ws_port: int
@@ -39,6 +41,8 @@ class VncSlot:
 
 @dataclass(slots=True)
 class VncSession:
+    """Runtime information about a VNC session and its helper processes."""
+
     slot: VncSlot
     display: str
     http_url: str | None
@@ -61,7 +65,11 @@ class _Prewarmed:
 
 
 class VncResourcePool:
+    """Manage allocation of DISPLAY numbers and ports for VNC sessions."""
+
     def __init__(self, *, displays: Iterable[int], vnc_ports: Iterable[int], ws_ports: Iterable[int]) -> None:
+        # ``deque`` gives us efficient pop/append operations from both ends which
+        # is perfect for a pool allocator.
         self._display_pool = deque(displays)
         self._vnc_ports = deque(vnc_ports)
         self._ws_ports = deque(ws_ports)
@@ -69,6 +77,8 @@ class VncResourcePool:
         self._lock = asyncio.Lock()
 
     async def acquire(self) -> VncSlot:
+        """Reserve a display/port triple for a VNC session."""
+
         async with self._lock:
             if not self._display_pool or not self._vnc_ports or not self._ws_ports:
                 raise RuntimeError("No available VNC slots")
@@ -81,6 +91,8 @@ class VncResourcePool:
             return slot
 
     async def release(self, slot: VncSlot | None) -> None:
+        """Return a slot back to the pool."""
+
         if slot is None:
             return
         async with self._lock:
@@ -94,6 +106,8 @@ class VncResourcePool:
 
 @dataclass(slots=True)
 class SessionHandle:
+    """In-memory representation of a running Camoufox session."""
+
     id: str
     headless: bool
     idle_ttl_seconds: int
@@ -111,6 +125,8 @@ class SessionHandle:
     start_url_wait: str = "load"
 
     def summary(self) -> SessionSummary:
+        """Return a lightweight model suitable for list responses."""
+
         return SessionSummary(
             id=self.id,
             status=self.status,
@@ -124,6 +140,8 @@ class SessionHandle:
         )
 
     def detail(self, ws_endpoint: str, vnc_payload: dict[str, Any]) -> SessionDetail:
+        """Combine summary information with connection metadata."""
+
         return SessionDetail(
             **self.summary().model_dump(),
             ws_endpoint=ws_endpoint,
@@ -132,6 +150,8 @@ class SessionHandle:
 
 
 class SessionManager:
+    """Coordinate Playwright browser servers and optional VNC sidecars."""
+
     def __init__(self, settings: RunnerSettings, playwright: Playwright) -> None:
         self._settings = settings
         self._playwright = playwright
@@ -144,7 +164,7 @@ class SessionManager:
             vnc_ports=range(settings.vnc_port_min, settings.vnc_port_max + 1),
             ws_ports=range(settings.vnc_ws_port_min, settings.vnc_ws_port_max + 1),
         )
-        # Prewarmed resources ready to be claimed for faster session creation
+        # Prewarmed resources ready to be claimed for faster session creation.
         self._prewarm_headless: list[_Prewarmed] = []
         self._prewarm_vnc: list[_Prewarmed] = []
         self._vnc_available = all(shutil.which(cmd) for cmd in ("Xvfb", "x11vnc", "websockify"))
@@ -153,15 +173,20 @@ class SessionManager:
         self._prewarm_headless_target = settings.prewarm_headless
         self._prewarm_vnc_target = settings.prewarm_vnc if self._vnc_available else 0
         self._start_url_wait = settings.start_url_wait
+        # Track in-flight bootstrap tasks so they can be cancelled during shutdown.
         self._bootstrap_tasks: set[asyncio.Task[None]] = set()
 
     async def start(self) -> None:
+        """Start background maintenance tasks."""
+
         self._cleanup_task = asyncio.create_task(self._cleanup_loop(), name="camoufox-cleanup")
-        # Start prewarming loop if targets are non-zero
+        # Start prewarming loop if targets are non-zero.
         if self._prewarm_headless_target > 0 or self._prewarm_vnc_target > 0:
             self._prewarm_task = asyncio.create_task(self._prewarm_loop(), name="camoufox-prewarm")
 
     async def close(self) -> None:
+        """Stop background tasks and shut down all sessions."""
+
         if self._cleanup_task:
             self._cleanup_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -181,6 +206,8 @@ class SessionManager:
         await self._close_all()
 
     async def _close_all(self) -> None:
+        """Terminate all active sessions."""
+
         async with self._lock:
             handles = list(self._sessions.values())
             self._sessions.clear()
@@ -188,7 +215,8 @@ class SessionManager:
             await self._shutdown_handle(handle)
 
     async def _close_prewarmed(self) -> None:
-        # Drain and close all prewarmed resources
+        """Drain and close all prewarmed resources."""
+
         async with self._lock:
             headless = list(self._prewarm_headless)
             vnc = list(self._prewarm_vnc)
@@ -201,19 +229,27 @@ class SessionManager:
                 await self._stop_vnc_session(item.vnc_session)
 
     async def list_summaries(self) -> list[SessionSummary]:
+        """Return lightweight information about each session."""
+
         async with self._lock:
             return [handle.summary() for handle in self._sessions.values()]
 
     async def list_details(self) -> list[SessionDetail]:
+        """Return detailed information about each session."""
+
         async with self._lock:
             handles = list(self._sessions.values())
         return [self.detail_for(handle) for handle in handles]
 
     async def get(self, session_id: str) -> SessionHandle | None:
+        """Retrieve a session handle by identifier."""
+
         async with self._lock:
             return self._sessions.get(session_id)
 
     async def create(self, payload: dict[str, Any]) -> SessionHandle:
+        """Create a new session using optional prewarmed resources."""
+
         defaults = self._settings.session_defaults
         headless = payload.get("headless")
         if headless is None:
@@ -269,10 +305,12 @@ class SessionManager:
         async with self._lock:
             self._sessions[handle.id] = handle
         # Trigger background prewarm top-up (best-effort)
-        asyncio.create_task(self._top_up_once(), name="camoufox-prewarm-kick").add_done_callback(lambda _: None)
+            asyncio.create_task(self._top_up_once(), name="camoufox-prewarm-kick").add_done_callback(lambda _: None)
         return handle
 
     async def delete(self, session_id: str) -> SessionHandle | None:
+        """Remove a session and shut down its processes."""
+
         async with self._lock:
             handle = self._sessions.pop(session_id, None)
         if handle:
@@ -281,6 +319,8 @@ class SessionManager:
         return handle
 
     async def touch(self, session_id: str) -> SessionHandle | None:
+        """Update ``last_seen_at`` to keep a session alive."""
+
         async with self._lock:
             handle = self._sessions.get(session_id)
             if not handle:
@@ -289,11 +329,15 @@ class SessionManager:
             return handle
 
     async def _cleanup_loop(self) -> None:
+        """Periodic task that cleans up stale sessions."""
+
         while True:
             await asyncio.sleep(self._settings.cleanup_interval)
             await self._cleanup_expired()
 
     async def _cleanup_expired(self) -> None:
+        """Remove sessions that have exceeded their idle timeout."""
+
         now = time.time()
         stale: list[SessionHandle] = []
         async with self._lock:
@@ -308,6 +352,8 @@ class SessionManager:
             await self._shutdown_handle(handle)
 
     async def _shutdown_handle(self, handle: SessionHandle) -> None:
+        """Tear down browser/VNC processes associated with a handle."""
+
         await self._teardown_controller(handle)
         try:
             await handle.server.close()
@@ -317,6 +363,8 @@ class SessionManager:
             handle.status = SessionStatus.DEAD
 
     async def _bootstrap_session(self, handle: SessionHandle) -> None:
+        """Open the configured start URL to warm up the browser session."""
+
         if not handle.start_url:
             return
         if handle.start_url_wait == "none":
@@ -333,6 +381,8 @@ class SessionManager:
             LOGGER.warning("Failed to open %s in session %s: %s", handle.start_url, handle.id, exc)
 
     async def _teardown_controller(self, handle: SessionHandle) -> None:
+        """Close Playwright controller objects associated with a session."""
+
         if handle.controller_page:
             with contextlib.suppress(Exception):
                 await handle.controller_page.close()
@@ -347,21 +397,29 @@ class SessionManager:
             handle.controller_browser = None
 
     async def iter_details(self):
+        """Asynchronously iterate over session details without holding the lock."""
+
         async with self._lock:
             handles = list(self._sessions.values())
         for handle in handles:
             yield self.detail_for(handle)
 
     def ws_endpoint_for(self, handle: SessionHandle) -> str:
+        """Return the Playwright WebSocket endpoint for a session."""
+
         return handle.server.ws_endpoint
 
     def detail_for(self, handle: SessionHandle) -> SessionDetail:
+        """Construct a :class:`SessionDetail` model for the given handle."""
+
         return handle.detail(
             self.ws_endpoint_for(handle),
             self._build_vnc_payload(handle),
         )
 
     async def _acquire_prewarmed(self, *, vnc: bool, headless: bool) -> _Prewarmed | None:
+        """Return a prewarmed browser server if one is available."""
+
         async with self._lock:
             if vnc and self._prewarm_vnc:
                 return self._prewarm_vnc.pop()
@@ -370,7 +428,8 @@ class SessionManager:
             return None
 
     async def _prewarm_loop(self) -> None:
-        # Periodically ensure we have the configured number of prewarmed resources
+        """Periodically ensure we have the configured number of prewarmed resources."""
+
         interval = self._settings.prewarm_check_interval_seconds
         while True:
             try:
@@ -380,7 +439,8 @@ class SessionManager:
             await asyncio.sleep(interval)
 
     async def _top_up_once(self) -> None:
-        # Headless pool
+        """Top up headless and VNC prewarm pools to their targets."""
+
         target_headless = self._prewarm_headless_target
         target_vnc = self._prewarm_vnc_target if self._vnc_available else 0
         async with self._lock:
@@ -412,6 +472,8 @@ class SessionManager:
                 break
 
     def _build_vnc_payload(self, handle: SessionHandle) -> dict[str, Any]:
+        """Generate the VNC section of the session detail payload."""
+
         if not handle.vnc or not handle.vnc_session:
             return {"ws": None, "http": None, "password_protected": False}
         return {
@@ -421,6 +483,8 @@ class SessionManager:
         }
 
     def _schedule_bootstrap(self, handle: SessionHandle) -> None:
+        """Fire and forget the optional start URL preloading task."""
+
         if not handle.start_url:
             return
         if handle.start_url_wait == "none":
@@ -438,6 +502,8 @@ class SessionManager:
         task.add_done_callback(_cleanup)
 
     async def _start_vnc_session(self) -> VncSession:
+        """Launch Xvfb, x11vnc and websockify for a new session."""
+
         if not self._vnc_available:
             raise VNCUnavailableError("VNC is not supported on this runner")
         slot = await self._vnc_pool.acquire()
@@ -530,6 +596,8 @@ class SessionManager:
             raise
 
     async def _stop_vnc_session(self, session: VncSession | None) -> None:
+        """Terminate helper processes and return the slot to the pool."""
+
         if not session:
             return
         try:
@@ -542,6 +610,8 @@ class SessionManager:
         processes: list[aio_subprocess.Process],
         drain_tasks: list[asyncio.Task[None]],
     ) -> None:
+        """Kill helper processes and cancel drain tasks safely."""
+
         for process in reversed(processes):
             with contextlib.suppress(Exception):
                 await _terminate_process(process, kill=True)
@@ -561,6 +631,8 @@ class SessionManager:
         *,
         query_params: dict[str, str] | None = None,
     ) -> str | None:
+        """Build an externally reachable URL for VNC clients."""
+
         if not base:
             return None
         try:
@@ -592,6 +664,8 @@ class SessionManager:
         return urlunparse((scheme, netloc, combined_path, "", query, ""))
 
     async def _wait_for_display_socket(self, slot: VncSlot, process: aio_subprocess.Process) -> None:
+        """Wait until Xvfb creates its UNIX socket."""
+
         socket_path = f"/tmp/.X11-unix/X{slot.display}"
         deadline = asyncio.get_running_loop().time() + self._settings.vnc_startup_timeout_seconds
         while True:
@@ -609,6 +683,8 @@ class SessionManager:
         port: int,
         process: aio_subprocess.Process,
     ) -> None:
+        """Wait until a TCP port starts accepting connections."""
+
         deadline = asyncio.get_running_loop().time() + self._settings.vnc_startup_timeout_seconds
         while True:
             try:
@@ -633,6 +709,8 @@ class SessionManager:
         name: str,
         env: dict[str, str] | None = None,
     ) -> tuple[aio_subprocess.Process, list[asyncio.Task[None]]]:
+        """Start a helper process and stream its output to the logs."""
+
         LOGGER.debug("Starting %s with args: %s", name, args)
         process = await aio_subprocess.create_subprocess_exec(
             *args,
@@ -664,6 +742,8 @@ class SessionManager:
         vnc: bool,
         display: str | None,
     ) -> "_SubprocessBrowserServer":
+        """Spawn a Camoufox Playwright server for a session."""
+
         opts = launch_options(headless=headless)
         env_vars = {k: v for k, v in (opts.get("env") or {}).items() if v is not None}
         if display:
@@ -755,6 +835,8 @@ class _SubprocessBrowserServer:
 
 
 async def _drain_stream(stream: asyncio.StreamReader | None, prefix: str) -> None:
+    """Continuously read a subprocess stream and log its output."""
+
     if stream is None:
         return
     while True:
@@ -765,6 +847,8 @@ async def _drain_stream(stream: asyncio.StreamReader | None, prefix: str) -> Non
 
 
 def _write_launch_config(options: dict[str, Any]) -> str:
+    """Write launch configuration to a temporary JSON file."""
+
     with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as fh:
         json.dump(options, fh)
         fh.write("\n")
@@ -772,6 +856,8 @@ def _write_launch_config(options: dict[str, Any]) -> str:
 
 
 def _remove_file(path: str) -> None:
+    """Remove a file without raising if it does not exist."""
+
     with contextlib.suppress(FileNotFoundError):
         import os
 
@@ -779,6 +865,8 @@ def _remove_file(path: str) -> None:
 
 
 async def _terminate_process(process: aio_subprocess.Process, *, kill: bool = False) -> None:
+    """Terminate a subprocess and fall back to ``kill`` if needed."""
+
     if process.returncode is not None:
         return
     if not kill:
