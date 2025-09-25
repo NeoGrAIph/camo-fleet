@@ -35,6 +35,12 @@ def test_index_returns_error_when_identifier_missing(app: TestClient) -> None:
     assert "identifier was not provided" in response.text
 
 
+def test_prefixed_index_route(app: TestClient) -> None:
+    response = app.get("/vnc/6910")
+    assert response.status_code == 200
+    assert "window.__VNC_ID__ = '6910'" in response.text
+
+
 def test_websockify_status_endpoint(app: TestClient) -> None:
     ok_response = app.get("/websockify", headers={"X-Forwarded-Prefix": "/vnc/6900"})
     assert ok_response.status_code == 200
@@ -105,6 +111,24 @@ def test_websocket_proxy_roundtrip() -> None:
         with TestClient(app) as client:
             with client.websocket_connect("/websockify?token=6901") as websocket:
                 payload = b"hello"
+                websocket.send_bytes(payload)
+                received = websocket.receive_bytes()
+                assert received == payload
+
+
+def test_prefixed_websocket_roundtrip() -> None:
+    with _start_echo_server() as (host, port):
+        settings = GatewaySettings(
+            vnc_map_json=json.dumps({"6902": {"host": host, "port": port}}),
+            ws_read_timeout_ms=10_000,
+            ws_write_timeout_ms=10_000,
+            tcp_idle_timeout_ms=60_000,
+            ws_ping_interval_ms=10_000,
+        )
+        app = create_app(settings)
+        with TestClient(app) as client:
+            with client.websocket_connect("/vnc/6902/websockify") as websocket:
+                payload = b"ping"
                 websocket.send_bytes(payload)
                 received = websocket.receive_bytes()
                 assert received == payload
