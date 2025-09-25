@@ -64,11 +64,11 @@ This creates deployments for headless и VNC воркеров (каждый — 
 values). Сервис Kubernetes публикует каждый порт из диапазона, поэтому несколько VNC-сессий могут
 жить параллельно. Для внешнего доступа прокиньте указанные WebSocket-порты (`6900-6904`) и,
 при необходимости, raw VNC (`5900-5904`) через Ingress TCP/WebSocket, NodePort или
-LoadBalancer. В Traefik используйте отдельный `TraefikService` на порт, как показано в
-[`deploy/traefik/camofleet-ui-external-ir.yaml`](../traefik/camofleet-ui-external-ir.yaml).
-
-При установке через Helm для генерации таких `TraefikService` включите флаг
-`workerVnc.traefikService.enabled=true` (по умолчанию выключен, чтобы не зависеть от CRD Traefik).
+LoadBalancer. В Traefik воспользуйтесь примерами из каталога
+[`deploy/traefik`](../traefik), либо соберите собственные `IngressRoute`/`IngressRouteTCP` с учётом
+портов из `worker-vnc-service.yaml`. Helm chart больше не создаёт такие объекты автоматически, зато
+позволяет передать публичные VNC URL через `workerVnc.controlOverrides` (см. раздел про Traefik в
+`README.md` репозитория).
 
 ## Helm chart
 
