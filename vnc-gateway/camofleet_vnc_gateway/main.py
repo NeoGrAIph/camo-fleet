@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from collections.abc import Iterable
-from urllib.parse import urlencode
+from collections.abc import Iterable, Mapping
+from http.cookies import SimpleCookie
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, status
@@ -29,6 +30,8 @@ HOP_BY_HOP_HEADERS = {
     "transfer-encoding",
     "upgrade",
 }
+
+TARGET_PORT_COOKIE = "vnc-target-port"
 
 
 class GatewayState:
@@ -78,8 +81,13 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
         state: GatewayState,
         path_suffix: str,
     ) -> Response:
+        raw_port, port_source = _select_target_port(
+            query_value=request.query_params.get("target_port"),
+            referer=request.headers.get("referer"),
+            cookies=request.cookies,
+        )
         try:
-            port = state.settings.validate_port(request.query_params.get("target_port"))
+            port = state.settings.validate_port(raw_port)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -113,7 +121,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-        return Response(
+        response = Response(
             content=response.content,
             status_code=response.status_code,
             headers={
@@ -122,6 +130,16 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
                 if key.lower() not in HOP_BY_HOP_HEADERS
             },
         )
+
+        if port_source == "query":
+            response.set_cookie(
+                TARGET_PORT_COOKIE,
+                str(port),
+                path="/vnc",
+                samesite="lax",
+            )
+
+        return response
 
     @app.api_route("/vnc", methods=["GET", "HEAD", "OPTIONS"])
     async def proxy_root(request: Request, state: GatewayState = Depends(get_state)) -> Response:
@@ -138,8 +156,13 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
 
     @app.websocket("/vnc/websockify")
     async def proxy_websocket(websocket: WebSocket, state: GatewayState = Depends(get_state)) -> None:
+        raw_port, _ = _select_target_port(
+            query_value=websocket.query_params.get("target_port"),
+            referer=websocket.headers.get("referer"),
+            cookies=_parse_cookie_header(websocket.headers.get("cookie")),
+        )
         try:
-            port = state.settings.validate_port(websocket.query_params.get("target_port"))
+            port = state.settings.validate_port(raw_port)
         except ValueError as exc:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason=str(exc))
             return
@@ -276,6 +299,58 @@ async def _forward_upstream_to_client(
     finally:
         with contextlib.suppress(RuntimeError):
             await websocket.close()
+
+
+def _select_target_port(
+    *,
+    query_value: str | None,
+    referer: str | None,
+    cookies: Mapping[str, str] | None,
+) -> tuple[str | None, str | None]:
+    """Choose the most appropriate source for ``target_port``."""
+
+    if query_value:
+        return query_value, "query"
+
+    referer_port = _extract_port_from_referer(referer)
+    if referer_port:
+        return referer_port, "referer"
+
+    if cookies:
+        cookie_port = cookies.get(TARGET_PORT_COOKIE)
+        if cookie_port:
+            return cookie_port, "cookie"
+
+    return None, None
+
+
+def _extract_port_from_referer(referer: str | None) -> str | None:
+    """Return ``target_port`` value parsed from ``referer`` if available."""
+
+    if not referer:
+        return None
+
+    parsed = urlparse(referer)
+    query_params = parse_qs(parsed.query)
+    values = query_params.get("target_port")
+    if values:
+        return values[0]
+    return None
+
+
+def _parse_cookie_header(header_value: str | None) -> dict[str, str]:
+    """Parse a raw ``Cookie`` header into a dictionary."""
+
+    if not header_value:
+        return {}
+
+    cookie = SimpleCookie()
+    try:
+        cookie.load(header_value)
+    except Exception:  # pragma: no cover - defensive against malformed headers
+        return {}
+
+    return {key: morsel.value for key, morsel in cookie.items()}
 
 
 __all__ = ["create_app"]
