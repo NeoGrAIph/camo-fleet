@@ -670,8 +670,26 @@ class SessionManager:
         if not combined_path.startswith("/"):
             combined_path = f"/{combined_path}"
         query_items = parse_qsl(parsed.query, keep_blank_values=True)
-        if query_params:
-            query_items.extend(query_params.items())
+        adjusted_query_params = dict(query_params) if query_params else None
+        if adjusted_query_params and "path" in adjusted_query_params:
+            base_segment = base_path.lstrip("/")
+            if base_segment:
+                raw_path = adjusted_query_params["path"]
+                path_value = raw_path.lstrip("/")
+                needs_prefix = not (
+                    path_value == base_segment
+                    or path_value.startswith(f"{base_segment}/")
+                )
+                if needs_prefix:
+                    if path_value:
+                        adjusted_query_params["path"] = f"{base_segment}/{path_value}"
+                    else:
+                        adjusted_query_params["path"] = base_segment
+                else:
+                    # Normalise to a relative form for consistency with noVNC expectations.
+                    adjusted_query_params["path"] = path_value
+        if adjusted_query_params:
+            query_items.extend(adjusted_query_params.items())
         if override_port is not None and not any(key == "target_port" for key, _ in query_items):
             query_items.append(("target_port", str(port)))
         query = urlencode(query_items)
