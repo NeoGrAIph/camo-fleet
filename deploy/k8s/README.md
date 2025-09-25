@@ -112,12 +112,12 @@ Example value:
     "name": "worker-vnc",
     "url": "http://camofleet-worker-vnc:8080",
     "supports_vnc": true,
-    "vnc_ws": "ws://camofleet-worker-vnc:{port}",
-    "vnc_http": "http://camofleet-worker-vnc:{port}"
+    "vnc_ws": "ws://camofleet-worker-vnc:6900/websockify?token={id}",
+    "vnc_http": "http://camofleet-worker-vnc:6900/vnc/{id}"
   }
 ]
 ```
-Control-plane подставляет порт и хост активной сессии в плейсхолдер `{port}` (и `{host}`, если он
+Control-plane подставляет идентификатор и хост активной сессии в плейсхолдер `{id}` (и `{host}`, если он
 используется). Runner, в свою очередь, формирует исходные URL с фактическим портом из своего
 диапазона, поэтому UI и API получают корректные публичные адреса без ручных правок.
 

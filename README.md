@@ -150,9 +150,9 @@ Helm release публикует сервисы `camofleet-camo-fleet-ui`, `camof
        secretName: camofleet-tls  # опционально: certResolver вместо secretName
    ```
 
-2. **Middleware для VNC.** VNC/noVNC раннер публикует статику и WebSocket на путях вида
-   `/{port}/websockify` и `/{port}/vnc.html`. Чтобы сохранить человекочитаемый URL `/vnc/{port}`
-   потребуется `StripPrefixRegex`:
+2. **Middleware для VNC.** VNC-гейтвей теперь обслуживает все подключения через единый порт
+   `6900`. Traefik снимает префикс `/vnc/{id}`, а приложение извлекает идентификатор сессии из
+   заголовка `X-Forwarded-Prefix`. Настройте `StripPrefixRegex`:
 
    ```yaml
    apiVersion: traefik.io/v1alpha1
@@ -166,9 +166,9 @@ Helm release публикует сервисы `camofleet-camo-fleet-ui`, `camof
          - ^/vnc/[0-9]+
    ```
 
-3. **IngressRoute для VNC.** По умолчанию `worker-vnc-service.yaml` открывает порты 6900-6904 для
-   WebSocket и 5900-5904 для raw-VNC. Создайте маршруты под нужный диапазон (ниже — пример для
-   WebSocket):
+3. **IngressRoute для VNC и WebSocket.** Сервис `worker-vnc` слушает HTTP на `8080`, прокси на
+   `6900` и raw-VNC на `5900-5904`. Создайте маршрут для страницы noVNC и WebSocket-прокси (обратите
+   внимание на абсолютный `/websockify`):
 
    ```yaml
    apiVersion: traefik.io/v1alpha1
@@ -176,45 +176,56 @@ Helm release публикует сервисы `camofleet-camo-fleet-ui`, `camof
    metadata:
      name: camofleet-worker-vnc
      namespace: camofleet
-   spec:
-     entryPoints:
-       - websecure
-     routes:
-       - match: Host(`camofleet.example.com`) && PathPrefix(`/vnc/6900`)
-         kind: Rule
-         middlewares:
-           - name: camofleet-worker-vnc-strip
-         services:
-           - name: camofleet-camo-fleet-worker-vnc
-             port: 6900
-       - match: Host(`camofleet.example.com`) && PathPrefix(`/vnc/6901`)
-         kind: Rule
-         middlewares:
-           - name: camofleet-worker-vnc-strip
-         services:
-           - name: camofleet-camo-fleet-worker-vnc
-             port: 6901
-       # добавьте остальные порты из диапазона
-     tls:
-       secretName: camofleet-tls
+    spec:
+      entryPoints:
+        - websecure
+      routes:
+        - match: Host(`camofleet.example.com`) && PathPrefix(`/vnc/`)
+          kind: Rule
+          middlewares:
+            - name: camofleet-worker-vnc-strip
+          services:
+            - name: camofleet-camo-fleet-worker-vnc
+              port: 6900
+      tls:
+        secretName: camofleet-tls
+
+    ---
+    apiVersion: traefik.io/v1alpha1
+    kind: IngressRoute
+    metadata:
+      name: camofleet-worker-vnc-websockify
+      namespace: camofleet
+    spec:
+      entryPoints:
+        - websecure
+      routes:
+        - match: Host(`camofleet.example.com`) && PathPrefix(`/websockify`)
+          kind: Rule
+          services:
+            - name: camofleet-camo-fleet-worker-vnc
+              port: 6900
+      tls:
+        secretName: camofleet-tls
    ```
 
 4. **Передача публичных URL в control-plane.** Control-plane использует JSON в
    `CONTROL_WORKERS` для отдачи VNC-ссылок UI. Чарт по умолчанию формирует их из сервисных адресов,
-   но для внешнего ingress задайте overrides, сохранив плейсхолдер `{port}` (его подставляет
-   приложение при выдаче сессии), например:
+   но для внешнего ingress задайте overrides, сохранив плейсхолдер `{id}` (это идентификатор VNC,
+   соответствующий порту `590x`), например:
 
    ```sh
    helm upgrade --install camofleet deploy/helm/camo-fleet \
      --namespace camofleet --create-namespace \
-     --set "workerVnc.controlOverrides.ws=wss://camofleet.example.com/vnc/{port}/websockify" \
-     --set "workerVnc.controlOverrides.http=https://camofleet.example.com/vnc/{port}/vnc.html"
+    --set "workerVnc.controlOverrides.ws=wss://camofleet.example.com/websockify?token={id}" \
+    --set "workerVnc.controlOverrides.http=https://camofleet.example.com/vnc/{id}"
    ```
 
    Логика формирования JSON хранится в
    [`control-configmap.yaml`](deploy/helm/camo-fleet/templates/control-configmap.yaml): при наличии
    overrides они напрямую попадают в конфиг, иначе используются внутрикластерные адреса
-   `ws://camofleet-camo-fleet-worker-vnc:{port}` и `http://camofleet-camo-fleet-worker-vnc:{port}`.
+  `ws://camofleet-camo-fleet-worker-vnc:6900/websockify?token={id}` и
+  `http://camofleet-camo-fleet-worker-vnc:6900/vnc/{id}`.
 
 
 Переиспользуйте примеры из каталога [`deploy/traefik`](deploy/traefik) как шаблон и адаптируйте
@@ -352,7 +363,7 @@ CI проверяет, что оба инструмента выполнены (
 4. После старта сервисов:
    - UI: `http://localhost:8080`
    - Control-plane API: `http://localhost:9000`
-   - noVNC: предпросмотр в UI; фактический порт выбирается автоматически из диапазона `6900-6999`
+  - noVNC: просмотр доступен через `http://localhost:6900/vnc/<id>` (гейтвей определяет целевой VNC по идентификатору)
 5. Для остановки окружения выполните:
    ```powershell
    docker compose down
@@ -409,11 +420,11 @@ cp .env.example .env
 - `vnc_ws` — базовый WebSocket URL предпросмотра (обязателен, если `supports_vnc=true`).
 - `vnc_http` — HTTP URL к noVNC iframe (опционально, если требуется веб-доступ).
 
-Значения `vnc_ws` и `vnc_http` поддерживают плейсхолдеры `{port}` и `{host}`. Плейсхолдеры могут
-использоваться в хосте, пути или query-строке: control-plane подставит фактический адрес и порт
-сессии, сохраняя остальные части URL. Это позволяет настраивать, например, публичные прокси
-через единый домен (`https://public.example/proxy/{port}`) или динамические поддомены
-(`wss://vnc-{port}.example`).
+Значения `vnc_ws` и `vnc_http` поддерживают плейсхолдеры `{id}` и `{host}`. Плейсхолдеры могут
+использоваться в хосте, пути или query-строке: control-plane подставит фактический идентификатор
+VNC-сессии, сохраняя остальные части URL. Это позволяет настраивать, например, публичные прокси
+через единый домен (`https://public.example/proxy/{id}`) или динамические поддомены
+(`wss://vnc-{id}.example`).
 
 ## Переменные окружения
 
@@ -422,20 +433,20 @@ cp .env.example .env
 | Переменная | Значение по умолчанию | Описание |
 | ---------- | --------------------- | -------- |
 | `RUNNER_CORS_ORIGINS` | `['*']` | Список origin'ов (JSON-массив или через запятую) для CORS. Используйте конкретные домены в production; значение `*` автоматически отключает `allow_credentials`. |
-| `RUNNER_VNC_WS_BASE` | `None` | Базовый адрес (со схемой и хостом) для генерации WebSocket URL предпросмотра. Порт будет подменён на выделенный для конкретной сессии, поэтому задавайте значение без явного `:порт`. |
-| `RUNNER_VNC_HTTP_BASE` | `None` | Аналогично `RUNNER_VNC_WS_BASE`, но для noVNC iframe (`/vnc.html`): указывайте схему и хост без порта, runner добавит его автоматически. |
+| `RUNNER_VNC_WS_BASE` | `None` | Базовый адрес (со схемой и хостом) внутреннего VNC-гейтвея, например `ws://camofleet-worker-vnc:6900`. |
+| `RUNNER_VNC_HTTP_BASE` | `None` | Аналогично `RUNNER_VNC_WS_BASE`, но для HTTP-страницы (`http://camofleet-worker-vnc:6900`). |
 | `RUNNER_VNC_DISPLAY_MIN` / `RUNNER_VNC_DISPLAY_MAX` | `100` / `199` | Диапазон виртуальных `DISPLAY`, выделяемых Xvfb. |
 | `RUNNER_VNC_PORT_MIN` / `RUNNER_VNC_PORT_MAX` | `5900` / `5999` | Диапазон TCP-портов для `x11vnc`. |
-| `RUNNER_VNC_WS_PORT_MIN` / `RUNNER_VNC_WS_PORT_MAX` | `6900` / `6999` | Диапазон TCP-портов для websockify/noVNC. |
+| `RUNNER_VNC_WS_PORT_MIN` / `RUNNER_VNC_WS_PORT_MAX` | `6900` / `6999` | Диапазон идентификаторов VNC-сессий (используется гейтвеем для сопоставления с портами `x11vnc`). |
 | `RUNNER_VNC_RESOLUTION` | `1920x1080x24` | Разрешение виртуального дисплея. |
-| `RUNNER_VNC_WEB_ASSETS_PATH` | `/usr/share/novnc` | Путь к статике noVNC; если отсутствует, websockify раздаёт только WebSocket. |
+| `RUNNER_VNC_WEB_ASSETS_PATH` | `/usr/share/novnc` | Устаревшее значение (используется только при `RUNNER_VNC_LEGACY=1`). |
 | `RUNNER_VNC_LEGACY` | `0` | При значении `1` включает прежний режим с одним глобальным VNC-сервером (`vnc-start.sh`). |
 | `RUNNER_PREWARM_HEADLESS` | `1` | Количество тёплых резервов без VNC (используется headless=true). |
-| `RUNNER_PREWARM_VNC` | `1` | Количество тёплых резервов c VNC (Xvfb+x11vnc+websockify); автоматически отключается, если инструменты VNC недоступны в образе. |
+| `RUNNER_PREWARM_VNC` | `1` | Количество тёплых резервов c VNC (Xvfb+x11vnc); автоматически отключается, если инструменты VNC недоступны в образе. |
 | `RUNNER_PREWARM_CHECK_INTERVAL_SECONDS` | `2.0` | Период проверки/дополнения пула тёплых резервов. |
 | `RUNNER_START_URL_WAIT` | `load` | Как долго ждать загрузку `start_url`: `none` (не грузить), `domcontentloaded`, `load`. При значении `none` навигация выполняется клиентом и стартовая вкладка останется пустой (включая VNC). |
 
-Порты и `DISPLAY` выделяются на каждую сессию. Убедитесь, что выбранные диапазоны проброшены наружу (Docker: `6900-6999:6900-6999`, `5900-5999:5900-5999`; Kubernetes — отдельный Ingress/Service или hostNetwork). Для headless‑резервов prewarm используется `headless=true`.
+Порты и `DISPLAY` выделяются на каждую сессию. Убедитесь, что выбранные диапазоны проброшены наружу (Docker: `6900:6900` для гейтвея и `5900-5999:5900-5999` для raw-VNC; Kubernetes — Ingress на `/vnc/{id}` и `/websockify`). Для headless‑резервов prewarm используется `headless=true`.
 
 ### Worker
 
@@ -447,12 +458,28 @@ cp .env.example .env
 | `WORKER_RUNNER_BASE_URL`| `http://127.0.0.1:8070` | Адрес sidecar runner'а внутри Pod/Compose. |
 | `WORKER_SUPPORTS_VNC`   | `false`               | Помечает воркер как умеющий работать с VNC. |
 
+### VNC gateway
+
+| Переменная                | Значение по умолчанию | Описание |
+| ------------------------- | --------------------- | -------- |
+| `HTTP_PORT`               | `6900`                | Порт HTTP/WS сервера. |
+| `VNC_DEFAULT_HOST`        | `127.0.0.1`           | Хост, на котором доступен `x11vnc` (runner). |
+| `VNC_WEB_RANGE`           | `6900-6904`           | Диапазон идентификаторов `<id>` для проксирования. |
+| `VNC_BASE_PORT`           | `5900`                | Базовый порт VNC; фактический рассчитывается как `base + (id - min)`. |
+| `VNC_MAP_JSON`            | пусто                 | JSON-объект с явными соответствиями `<id> → {host, port}`. |
+| `WS_READ_TIMEOUT_MS`      | `120000`              | Таймаут чтения WebSocket. |
+| `WS_WRITE_TIMEOUT_MS`     | `120000`              | Таймаут записи WebSocket. |
+| `TCP_CONNECT_TIMEOUT_MS`  | `5000`                | Таймаут подключения к upstream. |
+| `TCP_IDLE_TIMEOUT_MS`     | `300000`              | Максимальное время простоя соединения. |
+| `MAX_CONCURRENT_SESSIONS` | `1000`                | Лимит одновременных прокси. |
+| `SHUTDOWN_GRACE_MS`       | `30000`               | Время дренажа активных соединений при остановке. |
+
 ### Control-plane
 
 | Переменная         | Значение по умолчанию | Описание                                         |
 | ------------------ | --------------------- | ------------------------------------------------ |
 | `CONTROL_CORS_ORIGINS` | `['*']`              | Origin'ы, которым разрешён доступ к API. При `*` `allow_credentials` отключается; для production перечислите конкретные домены. |
-| `CONTROL_WORKERS`  | см. config            | JSON-массив с воркерами (`name`, `url`, `supports_vnc`, `vnc_ws`, `vnc_http`). Поля `vnc_ws` и `vnc_http` поддерживают плейсхолдеры `{port}` и `{host}` для подстановки адреса активной сессии. |
+| `CONTROL_WORKERS`  | см. config            | JSON-массив с воркерами (`name`, `url`, `supports_vnc`, `vnc_ws`, `vnc_http`). Поля `vnc_ws` и `vnc_http` поддерживают плейсхолдеры `{id}` и `{host}` для подстановки адреса активной сессии. |
 | `CONTROL_PORT`     | `9000`                | Порт HTTP API.                                   |
 | `CONTROL_METRICS_ENDPOINT` | `/metrics`     | Путь, на котором публикуются Prometheus-метрики. |
 

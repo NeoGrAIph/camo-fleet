@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import Awaitable, Callable
 from time import perf_counter
 from typing import Any
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import parse_qs, urlparse, urlunparse
 
 import httpx
 from fastapi import (
@@ -434,6 +435,23 @@ def _build_netloc(
     return f"{userinfo}{host}"
 
 
+_VNC_ID_PATTERN = re.compile(r"/vnc/(?P<id>\d+)(?:/|$)")
+
+
+def _extract_vnc_identifier(parsed: Any) -> int | None:
+    query = parse_qs(parsed.query)
+    for key in ("token", "id"):
+        values = query.get(key)
+        if values:
+            candidate = values[0]
+            if candidate.isdigit():
+                return int(candidate)
+    match = _VNC_ID_PATTERN.search(parsed.path or "")
+    if match:
+        return int(match.group("id"))
+    return None
+
+
 def apply_vnc_overrides(worker: WorkerConfig, payload: dict[str, Any]) -> dict[str, Any]:
     if not payload:
         return payload
@@ -456,20 +474,28 @@ def apply_vnc_overrides(worker: WorkerConfig, payload: dict[str, Any]) -> dict[s
             continue
 
         port_placeholder_used = "{port}" in override_template
+        id_placeholder_used = "{id}" in override_template
         host_placeholder_used = "{host}" in override_template
 
         session_port = parsed_original.port
         if session_port is None:
             session_port = _default_port_for_scheme(parsed_original.scheme)
 
-        if port_placeholder_used and session_port is None:
+        identifier = _extract_vnc_identifier(parsed_original)
+        effective_port = identifier if identifier is not None else session_port
+
+        if port_placeholder_used and effective_port is None:
             continue
         if host_placeholder_used and not parsed_original.hostname:
             continue
+        if id_placeholder_used and identifier is None:
+            continue
 
         rendered_override = override_template
-        if port_placeholder_used and session_port is not None:
-            rendered_override = rendered_override.replace("{port}", str(session_port))
+        if port_placeholder_used and effective_port is not None:
+            rendered_override = rendered_override.replace("{port}", str(effective_port))
+        if id_placeholder_used and identifier is not None:
+            rendered_override = rendered_override.replace("{id}", str(identifier))
         if host_placeholder_used and parsed_original.hostname:
             rendered_override = rendered_override.replace("{host}", parsed_original.hostname)
 
@@ -488,20 +514,13 @@ def apply_vnc_overrides(worker: WorkerConfig, payload: dict[str, Any]) -> dict[s
         port_placeholder_in_netloc = port_placeholder_used and ":{port}" in hostport_template
 
         if parsed_override.port is not None:
-            if port_placeholder_in_netloc:
-                final_port = parsed_override.port
-            elif port_placeholder_used:
-                final_port = None
-            else:
-                LOGGER.warning(
-                    "Ignoring static port %s from VNC override %r for worker %s",
-                    parsed_override.port,
-                    override_template,
-                    worker.name,
-                )
-                final_port = session_port
+            final_port = parsed_override.port
+        elif port_placeholder_in_netloc:
+            final_port = session_port
+        elif port_placeholder_used:
+            final_port = session_port
         else:
-            final_port = session_port if port_placeholder_in_netloc else None
+            final_port = None
 
         final_username = (
             parsed_override.username

@@ -28,6 +28,7 @@ spec:
 {{- $rawMin := int .Values.workerVnc.vncPortRange.raw.min }}
 {{- $rawMax := int .Values.workerVnc.vncPortRange.raw.max }}
 {{- $httpPort := int .Values.workerVnc.service.port }}
+{{- $gatewayPort := int .Values.workerVnc.gatewayPort }}
 {{- if gt $wsMin $wsMax }}
   {{- fail (printf "workerVnc.vncPortRange.ws.min (%d) must be <= ws.max (%d)" $wsMin $wsMax) }}
 {{- end }}
@@ -44,6 +45,9 @@ spec:
 {{- if and (ge $httpPort $rawMin) (le $httpPort $rawMax) }}
   {{- fail (printf "workerVnc.service.port (%d) overlaps raw range %d-%d" $httpPort $rawMin $rawMax) }}
 {{- end }}
+{{- if and (ge $gatewayPort $rawMin) (le $gatewayPort $rawMax) }}
+  {{- fail (printf "workerVnc.gatewayPort (%d) overlaps raw range %d-%d" $gatewayPort $rawMin $rawMax) }}
+{{- end }}
       containers:
         - name: runner
           image: {{ include "camofleet.image" (dict "Values" .Values "repository" .Values.workerVnc.runnerImage.repository "tag" .Values.workerVnc.runnerImage.tag) }}
@@ -52,9 +56,9 @@ spec:
             - name: RUNNER_PORT
               value: "{{ .Values.workerVnc.runnerPort }}"
             - name: RUNNER_VNC_WS_BASE
-              value: ws://{{ include "camofleet.workerVnc.fullname" . }}
+              value: ws://localhost:{{ .Values.workerVnc.gatewayPort }}
             - name: RUNNER_VNC_HTTP_BASE
-              value: http://{{ include "camofleet.workerVnc.fullname" . }}
+              value: http://localhost:{{ .Values.workerVnc.gatewayPort }}
             - name: RUNNER_VNC_PORT_MIN
               value: "{{ .Values.workerVnc.vncPortRange.raw.min }}"
             - name: RUNNER_VNC_PORT_MAX
@@ -69,11 +73,6 @@ spec:
           ports:
             - containerPort: {{ .Values.workerVnc.runnerPort }}
               name: runner-http
-{{- $wsUpper := int (add $wsMax 1) }}
-{{- range $port := untilStep $wsMin $wsUpper 1 }}
-            - containerPort: {{ $port }}
-              name: {{ printf "vnc-ws-%d" $port }}
-{{- end }}
 {{- $rawUpper := int (add $rawMax 1) }}
 {{- range $port := untilStep $rawMin $rawUpper 1 }}
             - containerPort: {{ $port }}
@@ -81,6 +80,24 @@ spec:
 {{- end }}
           resources:
 {{ toYaml .Values.workerVnc.runnerResources | indent 12 }}
+        - name: gateway
+          image: {{ include "camofleet.image" (dict "Values" .Values "repository" .Values.workerVnc.gatewayImage.repository "tag" .Values.workerVnc.gatewayImage.tag) }}
+          imagePullPolicy: {{ .Values.workerVnc.gatewayImage.pullPolicy }}
+          env:
+            - name: VNC_DEFAULT_HOST
+              value: 127.0.0.1
+            - name: VNC_WEB_RANGE
+              value: {{ printf "%d-%d" $wsMin $wsMax }}
+            - name: VNC_BASE_PORT
+              value: "{{ .Values.workerVnc.vncPortRange.raw.min }}"
+{{- with .Values.workerVnc.gatewayExtraEnv }}
+{{ toYaml . | indent 12 }}
+{{- end }}
+          ports:
+            - containerPort: {{ .Values.workerVnc.gatewayPort }}
+              name: vnc-ws
+          resources:
+{{ toYaml .Values.workerVnc.gatewayResources | indent 12 }}
         - name: worker
           image: {{ include "camofleet.image" (dict "Values" .Values "repository" .Values.workerVnc.image.repository "tag" .Values.workerVnc.image.tag) }}
           imagePullPolicy: {{ .Values.workerVnc.image.pullPolicy }}

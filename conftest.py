@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 
-for relative in ("control-plane", "runner", "worker", "shared"):
+for relative in ("control-plane", "runner", "worker", "worker-vnc", "shared"):
     candidate = str(ROOT / relative)
     if candidate not in sys.path:
         sys.path.insert(0, candidate)

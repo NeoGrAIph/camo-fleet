@@ -14,11 +14,23 @@ services:
       dockerfile: docker/Dockerfile.runner-vnc
     environment:
       RUNNER_PORT: 8070
-      RUNNER_VNC_WS_BASE: ws://localhost
-      RUNNER_VNC_HTTP_BASE: http://localhost
+      RUNNER_VNC_WS_BASE: ws://vnc-gateway:6900
+      RUNNER_VNC_HTTP_BASE: http://vnc-gateway:6900
     ports:
-      - '6900-6999:6900-6999'
       - '5900-5999:5900-5999'
+
+  vnc-gateway:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker-vnc-gateway
+    environment:
+      VNC_DEFAULT_HOST: runner-vnc
+      VNC_WEB_RANGE: 6900-6904
+      VNC_BASE_PORT: 5900
+    depends_on:
+      - runner-vnc
+    ports:
+      - '6900:6900'
 
   worker:
     build:
@@ -55,11 +67,13 @@ services:
         [
           {"name":"headless","url":"http://worker:8080","supports_vnc":false},
           {"name":"vnc","url":"http://worker-vnc:8080","supports_vnc":true,
-           "vnc_ws":"ws://localhost:{port}","vnc_http":"http://localhost:{port}"}
+           "vnc_ws":"ws://localhost:6900/websockify?token={id}",
+           "vnc_http":"http://localhost:6900/vnc/{id}"}
         ]
     depends_on:
       - worker
       - worker-vnc
+      - vnc-gateway
     ports:
       - '9000:9000'
 

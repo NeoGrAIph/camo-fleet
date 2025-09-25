@@ -11,13 +11,13 @@
 {{- if $vncWsOverride -}}
 {{- $_ := set $workerVncConfig "vnc_ws" $vncWsOverride -}}
 {{- else -}}
-{{- $_ := set $workerVncConfig "vnc_ws" (printf "ws://%s:{port}" $workerVncService) -}}
+{{- $_ := set $workerVncConfig "vnc_ws" (printf "ws://%s:%d/websockify?token={id}" $workerVncService (.Values.workerVnc.gatewayPort | int)) -}}
 {{- end -}}
 {{- $vncHttpOverride := index $vncOverrides "http" -}}
 {{- if $vncHttpOverride -}}
 {{- $_ := set $workerVncConfig "vnc_http" $vncHttpOverride -}}
 {{- else -}}
-{{- $_ := set $workerVncConfig "vnc_http" (printf "http://%s:{port}" $workerVncService) -}}
+{{- $_ := set $workerVncConfig "vnc_http" (printf "http://%s:%d/vnc/{id}" $workerVncService (.Values.workerVnc.gatewayPort | int)) -}}
 {{- end -}}
 {{- $defaultWorkers = append $defaultWorkers $workerVncConfig -}}
 {{- end -}}

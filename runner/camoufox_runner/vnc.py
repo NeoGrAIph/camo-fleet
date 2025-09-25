@@ -11,8 +11,8 @@ from asyncio import subprocess as aio_subprocess
 from collections import deque
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any
-from urllib.parse import urlencode, urlparse, urlunparse
+from typing import Any, Literal
+from urllib.parse import urlparse, urlunparse
 
 from .config import RunnerSettings
 
@@ -91,7 +91,7 @@ class VncProcessManager:
             vnc_ports=range(settings.vnc_port_min, settings.vnc_port_max + 1),
             ws_ports=range(settings.vnc_ws_port_min, settings.vnc_ws_port_max + 1),
         )
-        self._available = all(shutil.which(cmd) for cmd in ("Xvfb", "x11vnc", "websockify"))
+        self._available = all(shutil.which(cmd) for cmd in ("Xvfb", "x11vnc"))
         if not self._available:
             self._logger.info("VNC tooling not available; disabling VNC support")
 
@@ -107,7 +107,6 @@ class VncProcessManager:
         display_name = f":{slot.display}"
         processes: list[aio_subprocess.Process] = []
         drain_tasks: list[asyncio.Task[None]] = []
-        assets_path = self._settings.vnc_web_assets_path
         try:
             self._logger.debug(
                 "Allocating VNC slot display=%s vnc_port=%s ws_port=%s",
@@ -152,31 +151,17 @@ class VncProcessManager:
             processes.append(x11vnc_proc)
             drain_tasks.extend(x11vnc_tasks)
 
-            websockify_cmd: list[str] = ["websockify"]
-            if assets_path and os.path.isdir(assets_path):
-                websockify_cmd.append(f"--web={assets_path}")
-            websockify_cmd.extend([
-                str(slot.ws_port),
-                f"127.0.0.1:{slot.vnc_port}",
-            ])
-            websockify_proc, websockify_tasks = await self._spawn_process(
-                websockify_cmd,
-                name=f"vnc-websockify:{slot.ws_port}",
-            )
-            processes.append(websockify_proc)
-            drain_tasks.extend(websockify_tasks)
-            await self._wait_for_port("127.0.0.1", slot.ws_port, websockify_proc)
+            await self._wait_for_port("127.0.0.1", slot.vnc_port, x11vnc_proc, component="x11vnc")
 
-            http_url = self._compose_public_url(
+            http_url = self._compose_gateway_url(
                 self._settings.vnc_http_base,
                 slot.ws_port,
-                "/vnc.html",
-                query_params={"path": "websockify"},
+                kind="http",
             )
-            ws_url = self._compose_public_url(
+            ws_url = self._compose_gateway_url(
                 self._settings.vnc_ws_base,
                 slot.ws_port,
-                "/websockify",
+                kind="ws",
             )
 
             return VncSession(
@@ -216,13 +201,12 @@ class VncProcessManager:
         processes.clear()
         drain_tasks.clear()
 
-    def _compose_public_url(
+    def _compose_gateway_url(
         self,
         base: str | None,
-        port: int,
-        path_suffix: str,
+        identifier: int,
         *,
-        query_params: dict[str, str] | None = None,
+        kind: Literal["http", "ws"],
     ) -> str | None:
         if not base:
             return None
@@ -231,27 +215,30 @@ class VncProcessManager:
         except ValueError:
             self._logger.warning("Invalid VNC base URL: %s", base)
             return None
-        scheme = parsed.scheme or ("https" if path_suffix.endswith(".html") else "ws")
-        hostname = parsed.hostname or parsed.netloc
-        if not hostname:
-            self._logger.warning("Unable to determine hostname for VNC base URL: %s", base)
+
+        scheme = parsed.scheme
+        if not scheme:
+            scheme = "https" if kind == "http" else "wss"
+
+        netloc = parsed.netloc
+        if not netloc:
+            self._logger.warning("Unable to determine host for VNC base URL: %s", base)
             return None
-        userinfo = ""
-        if parsed.username:
-            userinfo = parsed.username
-            if parsed.password:
-                userinfo += f":{parsed.password}"
-            userinfo += "@"
-        if ":" in hostname and not hostname.startswith("["):
-            host_part = f"[{hostname}]"
-        else:
-            host_part = hostname
-        netloc = f"{userinfo}{host_part}:{port}"
+
         base_path = parsed.path.rstrip("/")
-        combined_path = f"{base_path}{path_suffix}" if path_suffix else base_path or "/"
+        if kind == "http":
+            suffix = f"/vnc/{identifier}"
+            query = parsed.query
+        else:
+            suffix = "/websockify"
+            token_param = f"token={identifier}"
+            query = parsed.query
+            query = f"{query}&{token_param}" if query else token_param
+
+        combined_path = f"{base_path}{suffix}" if suffix else base_path or "/"
         if not combined_path.startswith("/"):
             combined_path = f"/{combined_path}"
-        query = urlencode(query_params) if query_params else ""
+
         return urlunparse((scheme, netloc, combined_path, "", query, ""))
 
     async def _wait_for_display_socket(
@@ -273,6 +260,8 @@ class VncProcessManager:
         host: str,
         port: int,
         process: aio_subprocess.Process,
+        *,
+        component: str,
     ) -> None:
         deadline = asyncio.get_running_loop().time() + self._settings.vnc_startup_timeout_seconds
         while True:
@@ -280,10 +269,10 @@ class VncProcessManager:
                 reader, writer = await asyncio.open_connection(host, port)
             except OSError as exc:
                 if process.returncode is not None:
-                    raise RuntimeError(f"websockify exited with code {process.returncode}") from exc
+                    raise RuntimeError(f"{component} exited with code {process.returncode}") from exc
                 if asyncio.get_running_loop().time() >= deadline:
                     raise RuntimeError(
-                        f"Timed out waiting for websockify on {host}:{port}"
+                        f"Timed out waiting for {component} on {host}:{port}"
                     ) from None
                 await asyncio.sleep(0.1)
                 continue
