@@ -3,11 +3,31 @@
 from __future__ import annotations
 
 import re
-from typing import Iterable
+from typing import Any, Iterable, Mapping
 
 from fastapi import Request, WebSocket
 
 _PREFIX_PATTERN = re.compile(r"/vnc/(?P<id>\d+)(?:/|$)")
+
+
+def _normalize_candidate(value: Any) -> int | None:
+    """Normalize a raw identifier value to an ``int`` when possible."""
+
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
+
+
+def extract_identifier_from_path_params(params: Mapping[str, Any] | None) -> int | None:
+    """Extract an identifier from ASGI path parameters."""
+
+    if not params:
+        return None
+    return _normalize_candidate(params.get("identifier"))
 
 
 def _iter_prefix_values(raw_prefix: str | None) -> Iterable[str]:
@@ -49,8 +69,13 @@ def extract_identifier(request: RequestOrWebSocket) -> int | None:
         return identifier
 
     token = request.query_params.get("token") or request.query_params.get("id")
-    if token and token.isdigit():
-        return int(token)
+    token_identifier = _normalize_candidate(token)
+    if token_identifier is not None:
+        return token_identifier
+
+    path_params_identifier = extract_identifier_from_path_params(getattr(request, "path_params", None))
+    if path_params_identifier is not None:
+        return path_params_identifier
 
     return extract_identifier_from_path(request.url.path)
 
@@ -59,4 +84,5 @@ __all__ = [
     "extract_identifier",
     "extract_identifier_from_path",
     "extract_identifier_from_prefix",
+    "extract_identifier_from_path_params",
 ]
