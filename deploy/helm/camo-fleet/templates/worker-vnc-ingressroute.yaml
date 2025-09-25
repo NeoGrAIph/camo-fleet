@@ -77,6 +77,7 @@ spec:
 {{- if $.Values.workerVnc.traefikService.enabled }}
         - kind: TraefikService
           name: {{ printf "%s-%d" $serviceName $port }}
+          namespace: {{ $.Release.Namespace }}
 {{- else }}
         - name: {{ $serviceName }}
           port: {{ $port }}
