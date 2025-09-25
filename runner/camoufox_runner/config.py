@@ -1,4 +1,4 @@
-"""Configuration helpers for the Camoufox runner service."""
+"""Declarative configuration for the Camoufox runner."""
 
 from __future__ import annotations
 
@@ -48,6 +48,8 @@ class RunnerSettings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_vnc_ranges(self) -> "RunnerSettings":
+        """Ensure VNC resource ranges are sensible."""
+
         if self.vnc_display_min > self.vnc_display_max:
             raise ValueError("vnc_display_min must be less than or equal to vnc_display_max")
         if self.vnc_port_min > self.vnc_port_max:
