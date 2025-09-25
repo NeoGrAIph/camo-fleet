@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import logging
+from functools import lru_cache
 from collections.abc import Iterable, Mapping
 from http.cookies import SimpleCookie
 from urllib.parse import parse_qs, urlencode, urlparse
@@ -191,13 +193,19 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
         ]
 
         extra_headers = _select_upstream_headers(websocket.headers.items())
+        connect_kwargs = {
+            "ping_interval": None,
+            "subprotocols": subprotocols or None,
+        }
+
+        header_param = _websockets_extra_headers_param()
+        if extra_headers and header_param:
+            connect_kwargs[header_param] = extra_headers
 
         try:
             connect_ctx = websockets.connect(
                 upstream_url,
-                ping_interval=None,
-                subprotocols=subprotocols or None,
-                extra_headers=extra_headers,
+                **connect_kwargs,
             )
             upstream = await connect_ctx.__aenter__()
             try:
@@ -266,6 +274,25 @@ def _join_paths(prefix: str, suffix: str) -> str:
 def _select_upstream_headers(headers: Iterable[tuple[str, str]]) -> list[tuple[str, str]]:
     allowed = {"origin", "user-agent", "cookie", "sec-websocket-extensions"}
     return [(key, value) for key, value in headers if key.lower() in allowed]
+
+
+@lru_cache(maxsize=1)
+def _websockets_extra_headers_param() -> str | None:
+    """Return the keyword name accepted by :func:`websockets.connect`."""
+
+    try:
+        signature = inspect.signature(websockets.connect)
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        return "extra_headers"
+
+    for candidate in ("extra_headers", "additional_headers"):
+        if candidate in signature.parameters:
+            return candidate
+
+    LOGGER.debug(
+        "websockets.connect does not accept extra headers; forwarding will be skipped"
+    )
+    return None
 
 
 async def _forward_client_to_upstream(
