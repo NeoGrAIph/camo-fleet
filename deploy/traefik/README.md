@@ -5,15 +5,20 @@ k3s ships with Traefik installed by default. The manifest in this folder wires t
 ## Before you apply the manifest
 
 1. **Install the Helm release first.** Follow `deploy/helm/README.md` to deploy the workloads and Services in the `camofleet` namespace.
-2. **Make sure Traefik knows about TLS for the domain.** By default the manifest expects a certResolver named `letsencrypt`. Adjust the `tls` block in `camofleet-ingressroute.yaml` if your environment differs:
-   - **Existing secret.** Replace the `tls` section with `tls: { secretName: camofleet-services-tls }` and create that secret in the `camofleet` namespace:
+2. **Make sure Traefik knows about TLS for the domain.** You have two options:
+   - **Use an existing certificate.** Create a TLS secret named `camofleet-services-tls` in the `camofleet` namespace:
      ```bash
      kubectl create secret tls camofleet-services-tls \
        --namespace camofleet \
        --cert /path/to/fullchain.pem \
        --key /path/to/privkey.pem
      ```
-   - **Different certResolver.** Change the `certResolver` value to match the name configured in Traefik (for example `lehttp`).
+   - **Let Traefik issue certificates automatically.** If your Traefik installation already uses Let's Encrypt (for example via a certResolver called `letsencrypt`), edit `camofleet-ingressroute.yaml` and replace the `tls.secretName` block with:
+     ```yaml
+     tls:
+       certResolver: letsencrypt
+     ```
+     Save the file after the change.
 3. **Double-check DNS.** `camofleet.services.synestra.tech` must point to the public IP address of your k3s node or load balancer.
 
 ## Apply the IngressRoute

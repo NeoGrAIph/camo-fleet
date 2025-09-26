@@ -34,8 +34,6 @@ ui:
   podAnnotations: {}
   resources: {}
   controlHost: ""
-  controlScheme: http
-  controlPort: null
   service:
     type: ClusterIP
     port: 80
