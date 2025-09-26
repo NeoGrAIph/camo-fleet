@@ -1,0 +1,47 @@
+{{- $ns := .Values.namespace.name -}}
+{{- $releaseNamespace := coalesce .Release.Namespace $ns -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: camofleet-ui
+  namespace: {{ $releaseNamespace }}
+  labels:
+    app: camofleet-ui
+    release: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.replicaCount.ui }}
+  selector:
+    matchLabels:
+      app: camofleet-ui
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: camofleet-ui
+        release: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: ui
+          image: {{ include "camofleet.image" (dict "Values" .Values "repository" .Values.images.ui.repository "tag" .Values.images.ui.tag) }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          ports:
+            - containerPort: {{ int .Values.ui.service.port }}
+              name: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: camofleet-ui
+  namespace: {{ $releaseNamespace }}
+  labels:
+    app: camofleet-ui
+    release: {{ .Release.Name }}
+spec:
+  type: {{ .Values.ui.service.type }}
+  selector:
+    app: camofleet-ui
+    release: {{ .Release.Name }}
+  ports:
+    - port: {{ int .Values.ui.service.port }}
+      targetPort: http
+      name: http
