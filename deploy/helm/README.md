@@ -73,17 +73,18 @@ Release "camofleet" has been upgraded. Happy Helming!
    GIT_URL="https://github.com/NeoGrAIph/camo-fleet.git" # адрес репозитория
    WORKDIR="$HOME/helm/repo/camo-fleet"                  # куда клонировать
    NAMESPACE="camofleet"                                 # namespace в k3s
-  CONTAINERD_REF_PREFIX="docker.io/library"             # префикс ref при импорте в containerd
-  IMAGE_REGISTRY="${CONTAINERD_REF_PREFIX}"             # значение для .Values.images.registry
-  IMAGES=(
-    "camofleet-control:docker/Dockerfile.control"
-    "camofleet-ui:docker/Dockerfile.ui"
-    "camofleet-worker:docker/Dockerfile.worker"
-    "camofleet-runner:docker/Dockerfile.runner"
-    "camofleet-worker-vnc:docker/Dockerfile.worker"
-    "camofleet-runner-vnc:docker/Dockerfile.runner-vnc"
-    "camofleet-vnc-gateway:docker/Dockerfile.vnc-gateway"
-  )
+
+   CONTAINERD_REF_PREFIX="docker.io/library"             # префикс ref при импорте в containerd
+   IMAGE_REGISTRY="${CONTAINERD_REF_PREFIX}"             # значение для .Values.images.registry
+   IMAGES=(
+     "camofleet-control:docker/Dockerfile.control"
+     "camofleet-ui:docker/Dockerfile.ui"
+     "camofleet-worker:docker/Dockerfile.worker"
+     "camofleet-runner:docker/Dockerfile.runner"
+     "camofleet-worker-vnc:docker/Dockerfile.worker"
+     "camofleet-runner-vnc:docker/Dockerfile.runner-vnc"
+     "camofleet-vnc-gateway:docker/Dockerfile.vnc-gateway"
+   )
 
    # --- функции ---
    log() {
