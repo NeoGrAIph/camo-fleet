@@ -28,9 +28,9 @@ spec:
             - name: VNCGATEWAY_RUNNER_HOST
               value: {{ .Values.vncGateway.runnerServiceName }}
             - name: VNCGATEWAY_MIN_PORT
-              value: {{ printf "%d" .Values.vncGateway.portRange.min | quote }}
+              value: {{ .Values.vncGateway.portRange.min | int | quote }}
             - name: VNCGATEWAY_MAX_PORT
-              value: {{ printf "%d" .Values.vncGateway.portRange.max | quote }}
+              value: {{ .Values.vncGateway.portRange.max | int | quote }}
           ports:
             - containerPort: {{ int .Values.vncGateway.service.port }}
               name: http
