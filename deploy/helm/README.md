@@ -2,6 +2,7 @@
 
 This chart bundles the control plane, UI, workers, and VNC gateway so that the complete Camo Fleet stack can be deployed on any Kubernetes cluster. The defaults in `values.yaml` target a single-node k3s environment: the Services are only reachable inside the cluster, and you override the public host parameters when you publish the stack through Traefik later in this guide.
 
+
 > **Important:** The chart intentionally does **not** create an Ingress or Traefik IngressRoute. Apply the Traefik manifests from `deploy/traefik` after Helm finishes to publish the stack on the internet.
 
 ## Prerequisites
