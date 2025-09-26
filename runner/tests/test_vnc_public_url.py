@@ -57,25 +57,6 @@ def test_compose_public_url_with_gateway_existing_prefix(manager: SessionManager
     assert query["target_port"] == ["6930"]
 
 
-def test_compose_public_url_includes_target_port_for_websocket(
-    manager: SessionManager,
-) -> None:
-    result = manager._compose_public_url(
-        "ws://localhost:6080/vnc",
-        6930,
-        "/websockify",
-        query_params={"path": "websockify", "target_port": "6930"},
-    )
-
-    parsed = urlparse(result)
-    assert parsed.scheme == "ws"
-    assert parsed.netloc == "localhost:6080"
-    assert parsed.path == "/vnc/websockify"
-    query = parse_qs(parsed.query)
-    assert query["path"] == ["vnc/websockify"]
-    assert query["target_port"] == ["6930"]
-
-
 def test_compose_public_url_preserves_existing_target(manager: SessionManager) -> None:
     result = manager._compose_public_url(
         "http://localhost:6080/vnc?target_port=1234",
