@@ -117,8 +117,32 @@ function parseLabels(raw: string): Record<string, string> | undefined {
 
 function buildVncEmbedUrl(raw?: string | null): string | null {
   if (!raw) return null;
+
+  const parseUrl = (value: string) => {
+    if (typeof window !== 'undefined') {
+      return new URL(value, window.location.origin);
+    }
+    return new URL(value);
+  };
+
   try {
-    const url = new URL(raw);
+    const url = parseUrl(raw);
+    const targetPort = url.searchParams.get('target_port');
+    const pathValue = url.searchParams.get('path');
+
+    if (targetPort && pathValue) {
+      const [pathBase, rawQuery] = pathValue.split('?', 2);
+      const pathQuery = new URLSearchParams(rawQuery ?? '');
+      if (!pathQuery.has('target_port')) {
+        pathQuery.set('target_port', targetPort);
+        const serialisedQuery = pathQuery.toString();
+        url.searchParams.set(
+          'path',
+          serialisedQuery ? `${pathBase}?${serialisedQuery}` : pathBase,
+        );
+      }
+    }
+
     url.searchParams.set('autoconnect', '1');
     url.searchParams.set('resize', 'scale');
     url.searchParams.set('reconnect', 'true');
@@ -195,6 +219,11 @@ export default function App(): JSX.Element {
   const selectedSession = useMemo(
     () => sessions.find((item) => sessionKey(item) === selectedKey) ?? null,
     [sessions, selectedKey],
+  );
+
+  const selectedSessionVncUrl = useMemo(
+    () => buildVncEmbedUrl(selectedSession?.vnc?.http ?? null),
+    [selectedSession?.vnc?.http],
   );
 
   const selectedSessionKey = useMemo(
@@ -675,7 +704,7 @@ export default function App(): JSX.Element {
                       {selectedSession.vnc?.http ? (
                         <a
                           className="btn btn-secondary"
-                          href={selectedSession.vnc.http}
+                          href={selectedSessionVncUrl ?? selectedSession.vnc.http}
                           target="_blank"
                           rel="noreferrer"
                         >
@@ -698,7 +727,7 @@ export default function App(): JSX.Element {
                     <iframe
                       title="Browser session"
                       key={selectedSessionKey ?? 'no-session'}
-                      src={buildVncEmbedUrl(selectedSession.vnc.http) ?? undefined}
+                      src={selectedSessionVncUrl ?? undefined}
                       className="vnc-frame"
                     />
                   ) : (
@@ -740,7 +769,7 @@ export default function App(): JSX.Element {
                         <iframe
                           title={`Pinned session ${session.id}`}
                           key={`${key}-pinned`}
-                          src={buildVncEmbedUrl(session.vnc?.http) ?? undefined}
+                          src={buildVncEmbedUrl(session.vnc?.http ?? null) ?? undefined}
                           className="pinned-frame"
                         />
                       </article>
