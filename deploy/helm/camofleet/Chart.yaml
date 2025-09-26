@@ -1,0 +1,14 @@
+apiVersion: v2
+name: camofleet
+version: 0.1.1
+description: Helm chart for deploying the Camo Fleet stack on Kubernetes
+keywords:
+  - camofleet
+  - synestra
+  - remote-desktop
+  - vnc
+home: https://github.com/synestra/camo-fleet
+maintainers:
+  - name: Synestra Team
+    email: support@synestra.tech
+appVersion: "0.1.1"

@@ -1,0 +1,60 @@
+{{- $ns := .Values.namespace.name -}}
+{{- $releaseNamespace := coalesce .Release.Namespace $ns -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: camofleet-vnc-gateway
+  namespace: {{ $releaseNamespace }}
+  labels:
+    app: camofleet-vnc-gateway
+    release: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.replicaCount.vncGateway }}
+  selector:
+    matchLabels:
+      app: camofleet-vnc-gateway
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: camofleet-vnc-gateway
+        release: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: gateway
+          image: {{ include "camofleet.image" (dict "Values" .Values "repository" .Values.images.vncGateway.repository "tag" .Values.images.vncGateway.tag) }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          env:
+            - name: VNCGATEWAY_RUNNER_HOST
+              value: {{ .Values.vncGateway.runnerServiceName }}
+            - name: VNCGATEWAY_MIN_PORT
+              value: {{ .Values.vncGateway.portRange.min | int | quote }}
+            - name: VNCGATEWAY_MAX_PORT
+              value: {{ .Values.vncGateway.portRange.max | int | quote }}
+          ports:
+            - containerPort: {{ int .Values.vncGateway.service.port }}
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: camofleet-vnc-gateway
+  namespace: {{ $releaseNamespace }}
+  labels:
+    app: camofleet-vnc-gateway
+    release: {{ .Release.Name }}
+spec:
+  type: {{ .Values.vncGateway.service.type }}
+  selector:
+    app: camofleet-vnc-gateway
+    release: {{ .Release.Name }}
+  ports:
+    - port: {{ int .Values.vncGateway.service.port }}
+      targetPort: http
+      name: http
