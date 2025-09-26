@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { SessionItem, StartUrlWait, WorkerStatus } from './api';
+import type { SessionItem, WorkerStatus } from './api';
 import {
   createSession,
   deleteSession,
@@ -7,15 +7,22 @@ import {
   fetchWorkers,
   touchSession,
 } from './api';
+import { LaunchSessionForm, type LaunchSessionFormState } from './components/LaunchSessionForm';
+import { PinnedSessions } from './components/PinnedSessions';
+import { SessionDetails } from './components/SessionDetails';
+import { SessionTable } from './components/SessionTable';
+import { SessionWallboard } from './components/SessionWallboard';
+import { WorkerList } from './components/WorkerList';
+import { sessionKey, type StartUrlWait } from './utils/session';
 
-interface CreateFormState {
+interface CreateSessionPayload {
   worker?: string;
   headless: boolean;
-  idle: number;
-  startUrl: string;
-  labels: string;
+  idle_ttl_seconds: number;
+  start_url?: string;
+  start_url_wait: StartUrlWait;
+  labels?: Record<string, string>;
   vnc: boolean;
-  startUrlWait: StartUrlWait;
 }
 
 type ThemeMode = 'light' | 'dark';
@@ -25,7 +32,9 @@ type ActionState = {
   key: string;
 } | null;
 
-const DEFAULT_FORM: CreateFormState = {
+type MainView = 'sessions' | 'wallboard';
+
+const DEFAULT_FORM: LaunchSessionFormState = {
   worker: undefined,
   headless: false,
   idle: 300,
@@ -38,67 +47,6 @@ const DEFAULT_FORM: CreateFormState = {
 const START_URL_WAIT_OPTIONS: StartUrlWait[] = ['load', 'domcontentloaded', 'none'];
 
 const THEME_STORAGE_KEY = 'camofleet-ui-theme';
-
-function sessionKey(session: Pick<SessionItem, 'worker' | 'id'>): string {
-  return `${session.worker}:${session.id}`;
-}
-
-function formatRelative(date: string): string {
-  const target = new Date(date).valueOf();
-  if (Number.isNaN(target)) return 'unknown';
-  const delta = Date.now() - target;
-  if (delta < 30_000) return 'just now';
-  if (delta < 60_000) return `${Math.round(delta / 1000)}s ago`;
-  if (delta < 3_600_000) return `${Math.round(delta / 60_000)}m ago`;
-  if (delta < 43_200_000) return `${Math.round(delta / 3_600_000)}h ago`;
-  return new Date(date).toLocaleString();
-}
-
-function formatIdle(seconds: number): string {
-  if (!Number.isFinite(seconds)) return '—';
-  const clamped = Math.max(0, Math.floor(seconds));
-  return `${clamped}s`;
-}
-
-function formatStartUrlWait(mode: StartUrlWait | undefined | null): string {
-  switch (mode) {
-    case 'none':
-      return 'No wait';
-    case 'domcontentloaded':
-      return 'DOM ready';
-    case 'load':
-    default:
-      return 'Full load';
-  }
-}
-
-function remainingIdleSeconds(
-  session: Pick<SessionItem, 'last_seen_at' | 'idle_ttl_seconds'>,
-  nowMs: number,
-): number {
-  const lastSeen = new Date(session.last_seen_at).valueOf();
-  if (Number.isNaN(lastSeen)) {
-    return Math.max(0, Math.floor(session.idle_ttl_seconds));
-  }
-  const elapsedSeconds = Math.max(0, Math.floor((nowMs - lastSeen) / 1000));
-  const remaining = Math.floor(session.idle_ttl_seconds - elapsedSeconds);
-  return remaining > 0 ? remaining : 0;
-}
-
-function statusBadge(status: string): string {
-  switch (status) {
-    case 'READY':
-      return 'badge badge-ready';
-    case 'INIT':
-      return 'badge badge-warmup';
-    case 'TERMINATING':
-      return 'badge badge-warning';
-    case 'DEAD':
-      return 'badge badge-dead';
-    default:
-      return 'badge';
-  }
-}
 
 function parseLabels(raw: string): Record<string, string> | undefined {
   const entries = raw
@@ -115,44 +63,6 @@ function parseLabels(raw: string): Record<string, string> | undefined {
   return Object.fromEntries(entries);
 }
 
-function buildVncEmbedUrl(raw?: string | null): string | null {
-  if (!raw) return null;
-
-  const parseUrl = (value: string) => {
-    if (typeof window !== 'undefined') {
-      return new URL(value, window.location.origin);
-    }
-    return new URL(value);
-  };
-
-  try {
-    const url = parseUrl(raw);
-    const targetPort = url.searchParams.get('target_port');
-    const pathValue = url.searchParams.get('path');
-
-    if (targetPort && pathValue) {
-      const [pathBase, rawQuery] = pathValue.split('?', 2);
-      const pathQuery = new URLSearchParams(rawQuery ?? '');
-      if (!pathQuery.has('target_port')) {
-        pathQuery.set('target_port', targetPort);
-        const serialisedQuery = pathQuery.toString();
-        url.searchParams.set(
-          'path',
-          serialisedQuery ? `${pathBase}?${serialisedQuery}` : pathBase,
-        );
-      }
-    }
-
-    url.searchParams.set('autoconnect', '1');
-    url.searchParams.set('resize', 'scale');
-    url.searchParams.set('reconnect', 'true');
-    return url.toString();
-  } catch (error) {
-    console.warn('Failed to build VNC URL', error);
-    return raw;
-  }
-}
-
 function getInitialTheme(): ThemeMode {
   if (typeof window === 'undefined') {
     return 'light';
@@ -167,11 +77,12 @@ export default function App(): JSX.Element {
   const [workers, setWorkers] = useState<WorkerStatus[]>([]);
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [form, setForm] = useState<CreateFormState>(DEFAULT_FORM);
+  const [form, setForm] = useState<LaunchSessionFormState>(DEFAULT_FORM);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionState, setActionState] = useState<ActionState>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [mainView, setMainView] = useState<MainView>('sessions');
   const [pinnedKeys, setPinnedKeys] = useState<string[]>([]);
 
   useEffect(() => {
@@ -190,11 +101,13 @@ export default function App(): JSX.Element {
         ]);
         setWorkers(workerData);
         setSessions(sessionData);
+        setError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       }
     };
     load();
+    // Update worker/session lists via REST polling every 5 seconds.
     const interval = window.setInterval(load, 5000);
     return () => window.clearInterval(interval);
   }, []);
@@ -211,26 +124,6 @@ export default function App(): JSX.Element {
     }
   }, [sessions, selectedKey]);
 
-  const healthyWorkers = useMemo(
-    () => workers.filter((worker) => worker.healthy),
-    [workers],
-  );
-
-  const selectedSession = useMemo(
-    () => sessions.find((item) => sessionKey(item) === selectedKey) ?? null,
-    [sessions, selectedKey],
-  );
-
-  const selectedSessionVncUrl = useMemo(
-    () => buildVncEmbedUrl(selectedSession?.vnc?.http ?? null),
-    [selectedSession?.vnc?.http],
-  );
-
-  const selectedSessionKey = useMemo(
-    () => (selectedSession ? sessionKey(selectedSession) : null),
-    [selectedSession],
-  );
-
   useEffect(() => {
     setPinnedKeys((prev) => {
       const next = prev.filter((key) =>
@@ -239,6 +132,35 @@ export default function App(): JSX.Element {
       return next.length === prev.length ? prev : next;
     });
   }, [sessions]);
+
+  const healthyWorkers = useMemo(
+    () => workers.filter((worker) => worker.healthy),
+    [workers],
+  );
+
+  const selectableWorkerNames = useMemo(
+    () =>
+      healthyWorkers
+        .filter((worker) => !form.vnc || worker.supports_vnc)
+        .map((worker) => worker.name),
+    [healthyWorkers, form.vnc],
+  );
+
+  useEffect(() => {
+    if (!form.worker) return;
+    if (selectableWorkerNames.includes(form.worker)) return;
+    setForm((prev) => ({ ...prev, worker: undefined }));
+  }, [form.worker, selectableWorkerNames]);
+
+  const selectedSession = useMemo(
+    () => sessions.find((item) => sessionKey(item) === selectedKey) ?? null,
+    [sessions, selectedKey],
+  );
+
+  const selectedSessionKey = useMemo(
+    () => (selectedSession ? sessionKey(selectedSession) : null),
+    [selectedSession],
+  );
 
   const pinnedSessions = useMemo(
     () =>
@@ -265,13 +187,17 @@ export default function App(): JSX.Element {
     return summary;
   }, [sessions]);
 
+  const handleFormChange = (patch: Partial<LaunchSessionFormState>) => {
+    setForm((prev) => ({ ...prev, ...patch }));
+  };
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLoading(true);
     setError(null);
     try {
       const labels = parseLabels(form.labels);
-      const payload = {
+      const payload: CreateSessionPayload = {
         worker: form.worker || undefined,
         headless: form.headless,
         idle_ttl_seconds: form.idle,
@@ -374,7 +300,7 @@ export default function App(): JSX.Element {
       <aside className="sidebar">
         <header className="sidebar-header">
           <div>
-            <h1>Selenoid UI v2</h1>
+            <h1>Camofleet UI</h1>
             <p className="subtitle">Camofleet control panel</p>
           </div>
           <button className="btn btn-ghost" type="button" onClick={onThemeToggle}>
@@ -384,402 +310,117 @@ export default function App(): JSX.Element {
 
         <section className="sidebar-section">
           <h2>Cluster status</h2>
-          <ul className="worker-list">
-            {workers.map((worker) => (
-              <li key={worker.name}>
-                <span className={worker.healthy ? 'pill pill-healthy' : 'pill pill-offline'}>
-                  {worker.healthy ? '●' : '○'}
-                </span>
-                <div>
-                  <strong>{worker.name}</strong>
-                  <small>
-                    {worker.healthy ? 'Healthy' : 'Unreachable'} ·
-                    {worker.supports_vnc ? ' VNC' : ' No VNC'}
-                  </small>
-                </div>
-              </li>
-            ))}
-            {!workers.length && <li className="empty">No workers discovered</li>}
-          </ul>
+          <WorkerList workers={workers} />
         </section>
 
         <section className="sidebar-section">
           <h2>Launch session</h2>
-          <form className="launch-form" onSubmit={handleSubmit}>
-            <label>
-              Worker
-              <select
-                value={form.worker ?? ''}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    worker: event.target.value || undefined,
-                  }))
-                }
-              >
-                <option value="">Auto</option>
-                {healthyWorkers
-                  .filter((worker) => !form.vnc || worker.supports_vnc)
-                  .map((worker) => (
-                    <option key={worker.name} value={worker.name}>
-                      {worker.name}
-                    </option>
-                  ))}
-              </select>
-              {form.vnc && healthyWorkers.every((worker) => !worker.supports_vnc) ? (
-                <span className="form-hint">Workers with VNC support are unavailable.</span>
-              ) : null}
-            </label>
-
-            <div className="launch-row">
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={form.headless}
-                  disabled={form.vnc}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, headless: event.target.checked }))
-                  }
-                />
-                Headless
-              </label>
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={form.vnc}
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      vnc: event.target.checked,
-                      headless: event.target.checked ? false : prev.headless,
-                      worker: event.target.checked ? undefined : prev.worker,
-                    }))
-                  }
-                />
-                Enable VNC
-              </label>
-            </div>
-
-            <label>
-              Idle TTL (seconds)
-              <input
-                type="number"
-                min={30}
-                max={3600}
-                value={form.idle}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, idle: Number(event.target.value) }))
-                }
-                required
-              />
-            </label>
-
-            <label>
-              Start URL (optional)
-              <input
-                type="url"
-                placeholder="https://example.org"
-                value={form.startUrl}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, startUrl: event.target.value }))
-                }
-              />
-            </label>
-
-            <label>
-              Start URL wait
-              <select
-                value={form.startUrlWait}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    startUrlWait: event.target.value as StartUrlWait,
-                  }))
-                }
-              >
-                {START_URL_WAIT_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {formatStartUrlWait(option)}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              Labels (key=value, comma separated)
-              <input
-                type="text"
-                placeholder="owner=qa, manual=true"
-                value={form.labels}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, labels: event.target.value }))
-                }
-              />
-            </label>
-
-            <button className="btn btn-primary" type="submit" disabled={loading}>
-              {loading ? 'Launching…' : 'Launch session'}
-            </button>
-            {error && <p className="form-error">{error}</p>}
-          </form>
+          <LaunchSessionForm
+            form={form}
+            healthyWorkers={healthyWorkers}
+            loading={loading}
+            error={error}
+            startUrlWaitOptions={START_URL_WAIT_OPTIONS}
+            onChange={handleFormChange}
+            onSubmit={handleSubmit}
+          />
         </section>
       </aside>
 
       <main className="main">
         <section className="topbar">
-          <div className="stat">
-            <span className="stat-label">Total</span>
-            <span className="stat-value">{stats.total}</span>
-          </div>
-          {Array.from(stats.byStatus.entries()).map(([status, count]) => (
-            <div key={status} className="stat">
-              <span className="stat-label">{status}</span>
-              <span className="stat-value">{count}</span>
+          <nav className="main-tabs" aria-label="Main views">
+            <button
+              type="button"
+              className={`tab-button${mainView === 'sessions' ? ' tab-button--active' : ''}`}
+              onClick={() => setMainView('sessions')}
+            >
+              Manage sessions
+            </button>
+            <button
+              type="button"
+              className={`tab-button${mainView === 'wallboard' ? ' tab-button--active' : ''}`}
+              onClick={() => setMainView('wallboard')}
+            >
+              Session wall
+            </button>
+          </nav>
+
+          <div className="topbar-stats">
+            <div className="stat">
+              <span className="stat-label">Total</span>
+              <span className="stat-value">{stats.total}</span>
             </div>
-          ))}
+            {Array.from(stats.byStatus.entries()).map(([status, count]) => (
+              <div key={status} className="stat">
+                <span className="stat-label">{status}</span>
+                <span className="stat-value">{count}</span>
+              </div>
+            ))}
+          </div>
         </section>
 
-        <div className="content-grid">
-          <section className="panel">
-            <header className="panel-header">
-              <div>
-                <h2>Sessions</h2>
-                <p>{sessions.length ? 'Select a session to manage it' : 'No active sessions'}</p>
-              </div>
-            </header>
-            <div className="table-wrapper">
-              <table className="sessions-table">
-                <thead>
-                  <tr>
-                    <th>Status</th>
-                    <th>Worker</th>
-                    <th>Session ID</th>
-                    <th>Mode</th>
-                    <th>Last seen</th>
-                    <th>TTL left</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sessions.map((session) => {
-                    const key = sessionKey(session);
-                    const startUrlWait = session.start_url_wait ?? 'load';
-                    return (
-                      <tr
-                        key={key}
-                        className={key === selectedKey ? 'selected' : ''}
-                        onClick={() => setSelectedKey(key)}
-                      >
-                        <td>
-                          <span className={statusBadge(session.status)}>{session.status}</span>
-                        </td>
-                        <td>{session.worker}</td>
-                        <td className="mono">{session.id}</td>
-                        <td className="table-mode">
-                          <span className="pill pill-muted">Camoufox</span>
-                          {session.headless ? <span className="pill pill-muted">headless</span> : null}
-                          {session.vnc_enabled ? <span className="pill pill-muted">VNC</span> : null}
-                          {startUrlWait !== 'load' ? (
-                            <span className="pill pill-muted">{formatStartUrlWait(startUrlWait)}</span>
-                          ) : null}
-                        </td>
-                        <td>{formatRelative(session.last_seen_at)}</td>
-                        <td>{formatIdle(remainingIdleSeconds(session, now))}</td>
-                      </tr>
-                    );
-                  })}
-                  {!sessions.length && (
-                    <tr>
-                      <td colSpan={6} className="empty">
-                        There are no sessions yet. Launch one to get started.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+        {mainView === 'sessions' ? (
+          <>
+            <div className="content-grid">
+              <section className="panel">
+                <header className="panel-header">
+                  <div>
+                    <h2>Sessions</h2>
+                    <p>{sessions.length ? 'Select a session to manage it' : 'No active sessions'}</p>
+                  </div>
+                </header>
+                <SessionTable
+                  sessions={sessions}
+                  selectedKey={selectedKey}
+                  onSelect={setSelectedKey}
+                  now={now}
+                />
+              </section>
+
+              <section className="panel">
+                <header className="panel-header">
+                  <h2>Inspector</h2>
+                </header>
+                {selectedSession ? (
+                  <SessionDetails
+                    session={selectedSession}
+                    now={now}
+                    iframeKey={selectedSessionKey ?? 'no-session'}
+                    onTouch={() => handleTouch(selectedSession)}
+                    onKill={() => handleKill(selectedSession)}
+                    onCopyWs={handleCopyWs}
+                    onTogglePin={() => togglePinned(selectedSession)}
+                    isPinned={isPinned}
+                    isTouching={actionInFlight('touch', selectedSession)}
+                    isKilling={actionInFlight('kill', selectedSession)}
+                  />
+                ) : (
+                  <div className="empty-state">
+                    <p>Select a session to inspect details, control TTL, or open the live browser.</p>
+                  </div>
+                )}
+              </section>
             </div>
-          </section>
 
-          <section className="panel">
-            <header className="panel-header">
-              <h2>Inspector</h2>
-            </header>
-            {selectedSession ? (
-              <div className="session-details">
-                <div className="details-header">
-                  <div>
-                    <h3 className="mono">{selectedSession.id}</h3>
-                    <p>
-                      Worker <strong>{selectedSession.worker}</strong> · Camoufox{' '}
-                      {selectedSession.headless ? <span className="pill pill-muted">headless</span> : null}{' '}
-                      {selectedSession.vnc_enabled ? <span className="pill pill-muted">VNC</span> : null}
-                    </p>
-                  </div>
-                  <div className="actions">
-                    <button
-                      className="btn btn-secondary"
-                      type="button"
-                      onClick={() => handleTouch(selectedSession)}
-                      disabled={actionInFlight('touch', selectedSession)}
-                    >
-                      {actionInFlight('touch', selectedSession) ? 'Extending…' : 'Extend TTL'}
-                    </button>
-                    <button
-                      className="btn btn-danger"
-                      type="button"
-                      onClick={() => handleKill(selectedSession)}
-                      disabled={actionInFlight('kill', selectedSession)}
-                    >
-                      {actionInFlight('kill', selectedSession) ? 'Terminating…' : 'Terminate'}
-                    </button>
-                  </div>
-                </div>
-
-                <dl className="details-list">
-                  <div>
-                    <dt>Status</dt>
-                    <dd>
-                      <span className={statusBadge(selectedSession.status)}>{selectedSession.status}</span>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Created</dt>
-                    <dd>{new Date(selectedSession.created_at).toLocaleString()}</dd>
-                  </div>
-                  <div>
-                    <dt>Last activity</dt>
-                    <dd>{formatRelative(selectedSession.last_seen_at)}</dd>
-                  </div>
-                  <div>
-                    <dt>TTL left</dt>
-                    <dd>{formatIdle(remainingIdleSeconds(selectedSession, now))}</dd>
-                  </div>
-                  <div>
-                    <dt>Start URL wait</dt>
-                    <dd>{formatStartUrlWait(selectedSession.start_url_wait ?? 'load')}</dd>
-                  </div>
-                  <div>
-                    <dt>WebSocket endpoint</dt>
-                    <dd>
-                      <button
-                        className="btn btn-link"
-                        type="button"
-                        onClick={() => handleCopyWs(selectedSession.ws_endpoint)}
-                      >
-                        Copy
-                      </button>
-                      <code>{selectedSession.ws_endpoint}</code>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Labels</dt>
-                    <dd>
-                      {Object.keys(selectedSession.labels || {}).length === 0 ? (
-                        <span className="pill pill-muted">None</span>
-                      ) : (
-                        <div className="labels">
-                          {Object.entries(selectedSession.labels).map(([key, value]) => (
-                            <span key={key} className="pill pill-muted">
-                              {key}: {value}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </dd>
-                  </div>
-                </dl>
-
-                <div className="vnc-wrapper">
-                  <div className="vnc-header">
-                    <h4>Live browser</h4>
-                    <div className="actions">
-                      {selectedSession.vnc?.http ? (
-                        <button
-                          className="btn btn-secondary"
-                          type="button"
-                          onClick={() => togglePinned(selectedSession)}
-                        >
-                          {isPinned ? 'Unpin preview' : 'Pin preview'}
-                        </button>
-                      ) : null}
-                      {selectedSession.vnc?.http ? (
-                        <a
-                          className="btn btn-secondary"
-                          href={selectedSessionVncUrl ?? selectedSession.vnc.http}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Open full screen
-                        </a>
-                      ) : null}
-                      {selectedSession.vnc?.ws ? (
-                        <a
-                          className="btn btn-secondary"
-                          href={selectedSession.vnc.ws}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Raw VNC WS
-                        </a>
-                      ) : null}
-                    </div>
-                  </div>
-                  {selectedSession.vnc?.http ? (
-                    <iframe
-                      title="Browser session"
-                      key={selectedSessionKey ?? 'no-session'}
-                      src={selectedSessionVncUrl ?? undefined}
-                      className="vnc-frame"
-                    />
-                  ) : (
-                    <div className="empty">VNC is not available for this session.</div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="empty-state">
-                <p>Select a session to inspect details, control TTL, or open the live browser.</p>
-              </div>
-            )}
             {pinnedSessions.length ? (
-              <div className="pinned-section">
-                <div className="pinned-header">
-                  <h4>Pinned VNC sessions</h4>
-                  <button className="btn btn-link" type="button" onClick={clearPinned}>
-                    Clear all
-                  </button>
-                </div>
-                <div className="pinned-grid">
-                  {pinnedSessions.map((session) => {
-                    const key = sessionKey(session);
-                    return (
-                      <article key={key} className="pinned-card">
-                        <header className="pinned-card-header">
-                          <div className="pinned-card-title">
-                            <span className="pill pill-muted">{session.worker}</span>
-                            <strong className="mono">{session.id}</strong>
-                          </div>
-                          <button
-                            className="btn btn-ghost"
-                            type="button"
-                            onClick={() => removePinned(key)}
-                          >
-                            Remove
-                          </button>
-                        </header>
-                        <iframe
-                          title={`Pinned session ${session.id}`}
-                          key={`${key}-pinned`}
-                          src={buildVncEmbedUrl(session.vnc?.http ?? null) ?? undefined}
-                          className="pinned-frame"
-                        />
-                      </article>
-                    );
-                  })}
-                </div>
-              </div>
+              <PinnedSessions
+                sessions={pinnedSessions}
+                onRemove={removePinned}
+                onClear={clearPinned}
+              />
             ) : null}
-          </section>
-        </div>
+          </>
+        ) : (
+          <SessionWallboard
+            sessions={sessions}
+            now={now}
+            onInspect={(session) => {
+              setSelectedKey(sessionKey(session));
+              setMainView('sessions');
+            }}
+          />
+        )}
       </main>
     </div>
   );
