@@ -1,10 +1,4 @@
 {{- $controlHost := default (include "camofleet.control.fullname" .) .Values.ui.controlHost -}}
-{{- $controlScheme := default "http" .Values.ui.controlScheme -}}
-{{- $controlPort := default .Values.control.service.port .Values.ui.controlPort -}}
-{{- $controlBackend := printf "%s://%s" $controlScheme $controlHost -}}
-{{- if $controlPort -}}
-{{- $controlBackend = printf "%s:%v" $controlBackend $controlPort -}}
-{{- end -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -22,7 +16,7 @@ data:
         error_log /dev/stderr warn;
 
         location /api/ {
-            proxy_pass {{ $controlBackend }}/;
+            proxy_pass http://{{ $controlHost }}:{{ .Values.control.service.port }}/;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_http_version 1.1;
