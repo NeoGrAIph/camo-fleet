@@ -1,6 +1,6 @@
 namespace:
   name: camofleet
-  create: true
+  create: false
 
 images:
   registry: REGISTRY
