@@ -580,6 +580,10 @@ class SessionManager:
                 self._settings.vnc_ws_base,
                 slot.ws_port,
                 "/websockify",
+                query_params={
+                    "path": "websockify",
+                    "target_port": str(slot.ws_port),
+                },
             )
 
             return VncSession(
