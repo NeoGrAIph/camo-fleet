@@ -1,0 +1,64 @@
+{{- if .Values.vncGateway.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "camofleet.vncGateway.fullname" . }}
+  labels:
+    app: {{ include "camofleet.vncGateway.fullname" . }}
+{{ include "camofleet.labels" . | indent 4 }}
+spec:
+  replicas: {{ .Values.vncGateway.replicas }}
+  selector:
+    matchLabels:
+      app: {{ include "camofleet.vncGateway.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "camofleet.vncGateway.fullname" . }}
+{{ include "camofleet.selectorLabels" . | indent 8 }}
+      {{- with .Values.vncGateway.podAnnotations }}
+      annotations:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+    spec:
+{{ include "camofleet.imagePullSecrets" . | indent 6 }}
+      containers:
+        - name: gateway
+          image: {{ include "camofleet.image" (dict "Values" .Values "repository" .Values.vncGateway.image.repository "tag" .Values.vncGateway.image.tag) }}
+          imagePullPolicy: {{ .Values.vncGateway.image.pullPolicy }}
+          env:
+            - name: VNCGATEWAY_RUNNER_HOST
+              value: {{ default (include "camofleet.workerVnc.fullname" .) .Values.vncGateway.runnerHost | quote }}
+            - name: VNCGATEWAY_MIN_PORT
+              value: "{{ .Values.vncGateway.portRange.min }}"
+            - name: VNCGATEWAY_MAX_PORT
+              value: "{{ .Values.vncGateway.portRange.max }}"
+          {{- with .Values.vncGateway.runnerHttpScheme }}
+            - name: VNCGATEWAY_RUNNER_HTTP_SCHEME
+              value: {{ . | quote }}
+          {{- end }}
+          {{- with .Values.vncGateway.runnerWsScheme }}
+            - name: VNCGATEWAY_RUNNER_WS_SCHEME
+              value: {{ . | quote }}
+          {{- end }}
+          {{- with .Values.vncGateway.runnerPathPrefix }}
+            - name: VNCGATEWAY_RUNNER_PATH_PREFIX
+              value: {{ . | quote }}
+          {{- end }}
+          {{- with .Values.vncGateway.extraEnv }}
+{{ toYaml . | indent 12 }}
+          {{- end }}
+          ports:
+            - containerPort: {{ .Values.vncGateway.service.port }}
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          {{- with .Values.vncGateway.resources }}
+          resources:
+{{ toYaml . | indent 12 }}
+          {{- end }}
+{{- end }}
