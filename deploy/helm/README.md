@@ -34,7 +34,7 @@ Open `my-values.yaml` and adjust the options that differ in your environment:
 
 - **`global.imageRegistry`** – замените пустое значение на адрес реестра, где лежат собранные образы (например, `registry.synestra.tech`). Если в теге уже указан полный путь, оставьте поле пустым.
 - **Component tags** – пропишите нужные теги (`control.image.tag`, `worker.image.tag` и т.д.), если вы используете не `latest`.
-- **`ui.controlHost`** – установите домен, по которому Traefik проксирует API. Для публичного сценария оставьте `camofleet.services.synestra.tech`.
+- **`ui.controlHost`**, **`ui.controlScheme`**, **`ui.controlPort`** – установите домен и протокол, по которому Traefik проксирует API. Для публичного сценария оставьте `camofleet.services.synestra.tech` и добавьте `ui.controlScheme=https`, `ui.controlPort=443`. Если приложение не публикуется наружу, оставьте значения по умолчанию (внутрикластерный сервис control-plane на HTTP:9000).
 - **`workerVnc.controlOverrides`** – задайте внешние ссылки, совпадающие с Traefik-роутингом:
   ```yaml
   workerVnc:
@@ -139,8 +139,10 @@ Release "camofleet" has been upgraded. Happy Helming!
      --create-namespace
      --set-string "global.imageRegistry=${IMAGE_REGISTRY}"
      --set-string "ui.controlHost=${PUBLIC_HOST}"
-     --set-string "workerVnc.controlOverrides.ws=wss://${PUBLIC_HOST}/vnc/websockify?token={id}"
-     --set-string "workerVnc.controlOverrides.http=https://${PUBLIC_HOST}/vnc/{id}"
+    --set-string "ui.controlScheme=https"
+    --set-string "ui.controlPort=443"
+    --set-string "workerVnc.controlOverrides.ws=wss://${PUBLIC_HOST}/vnc/websockify?token={id}"
+    --set-string "workerVnc.controlOverrides.http=https://${PUBLIC_HOST}/vnc/{id}"
    )
 
    # --- деплой через helm ---
