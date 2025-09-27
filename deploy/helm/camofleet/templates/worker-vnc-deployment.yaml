@@ -29,6 +29,13 @@ spec:
 {{- $rawMax := int .Values.workerVnc.vncPortRange.raw.max }}
 {{- $httpPort := int .Values.workerVnc.service.port }}
 {{- $gatewayPort := int .Values.workerVnc.gatewayPort }}
+{{- $runnerPathPrefix := default "" .Values.workerVnc.runnerPathPrefix }}
+{{- if and $runnerPathPrefix (not (hasPrefix "/" $runnerPathPrefix)) }}
+{{- $runnerPathPrefix = printf "/%s" $runnerPathPrefix }}
+{{- end }}
+{{- if and (gt (len $runnerPathPrefix) 1) (hasSuffix "/" $runnerPathPrefix) }}
+{{- $runnerPathPrefix = trimSuffix "/" $runnerPathPrefix }}
+{{- end }}
 {{- if gt $wsMin $wsMax }}
   {{- fail (printf "workerVnc.vncPortRange.ws.min (%d) must be <= ws.max (%d)" $wsMin $wsMax) }}
 {{- end }}
@@ -59,9 +66,9 @@ spec:
             - name: RUNNER_PORT
               value: "{{ .Values.workerVnc.runnerPort }}"
             - name: RUNNER_VNC_WS_BASE
-              value: ws://localhost:{{ .Values.workerVnc.gatewayPort }}/vnc
+              value: ws://localhost:{{ .Values.workerVnc.gatewayPort }}{{ $runnerPathPrefix }}
             - name: RUNNER_VNC_HTTP_BASE
-              value: http://localhost:{{ .Values.workerVnc.gatewayPort }}/vnc
+              value: http://localhost:{{ .Values.workerVnc.gatewayPort }}{{ $runnerPathPrefix }}
             - name: RUNNER_VNC_PORT_MIN
               value: "{{ .Values.workerVnc.vncPortRange.raw.min }}"
             - name: RUNNER_VNC_PORT_MAX
@@ -92,7 +99,7 @@ spec:
             - name: VNCGATEWAY_RUNNER_HOST
               value: "localhost"
             - name: VNCGATEWAY_RUNNER_PATH_PREFIX
-              value: "/vnc"
+              value: "{{ $runnerPathPrefix }}"
             - name: VNCGATEWAY_MIN_PORT
               value: "{{ .Values.workerVnc.vncPortRange.ws.min }}"
             - name: VNCGATEWAY_MAX_PORT

@@ -81,6 +81,7 @@ workerVnc:
   gatewayExtraEnv: []
   # Exposed through the gateway container as VNCGATEWAY_PORT and published by the Service/Ingress.
   gatewayPort: 6080
+  runnerPathPrefix: ""
   image:
     repository: camofleet-worker
     tag: latest
@@ -104,8 +105,8 @@ workerVnc:
   sessionDefaults: {}
   controlOverrides:
     # Override the public URLs that the control plane returns in API responses.
-    # When setting custom values make sure the base paths already include the `/vnc`
-    # suffix (for example `wss://vnc.example.com/vnc`) so that runners can append
-    # `vnc/websockify` without requiring extra middleware on the ingress.
+    # When setting custom values make sure the URLs resolve to the public route
+    # that exposes the VNC gateway. The runner appends ``vnc.html`` and
+    # ``websockify`` to these bases automatically.
     ws: null
     http: null

@@ -21,9 +21,9 @@ spec:
             - name: RUNNER_PORT
               value: "8070"
             - name: RUNNER_VNC_WS_BASE
-              value: wss://camofleet.local/vnc
+              value: wss://camofleet.local
             - name: RUNNER_VNC_HTTP_BASE
-              value: https://camofleet.local/vnc
+              value: https://camofleet.local
           ports:
             - containerPort: 8070
               name: runner-http

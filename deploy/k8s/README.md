@@ -67,8 +67,8 @@ Example value:
     "name": "worker-vnc",
     "url": "http://camofleet-worker-vnc:8080",
     "supports_vnc": true,
-    "vnc_ws": "wss://camofleet.local/vnc",
-    "vnc_http": "https://camofleet.local/vnc"
+    "vnc_ws": "wss://camofleet.local",
+    "vnc_http": "https://camofleet.local"
   }
 ]
 ```
@@ -77,7 +77,8 @@ Runner автоматически подменяет порт в этих баз
 
 ### VNC gateway
 
-The gateway accepts HTTP и WebSocket запросы на `/vnc` и перенаправляет их на runner. Основные
+The gateway accepts HTTP и WebSocket запросы и перенаправляет их на runner без добавления
+дополнительного префикса. Основные
 переменные окружения:
 
 - `VNCGATEWAY_RUNNER_HOST` — DNS-имя сервиса с runner-vnc (по умолчанию `camofleet-worker-vnc`).

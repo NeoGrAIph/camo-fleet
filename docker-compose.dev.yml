@@ -16,8 +16,8 @@ services:
       dockerfile: docker/Dockerfile.runner-vnc
     environment:
       RUNNER_PORT: 8070
-      RUNNER_VNC_WS_BASE: ws://localhost:6080/vnc
-      RUNNER_VNC_HTTP_BASE: http://localhost:6080/vnc
+      RUNNER_VNC_WS_BASE: ws://localhost:6080
+      RUNNER_VNC_HTTP_BASE: http://localhost:6080
     expose:
       - '8070'
     ports:
@@ -85,7 +85,7 @@ services:
         [
           {"name":"headless","url":"http://worker:8080","supports_vnc":false},
           {"name":"vnc","url":"http://worker-vnc:8080","supports_vnc":true,
-           "vnc_ws":"ws://localhost:6080/vnc","vnc_http":"http://localhost:6080/vnc"}
+           "vnc_ws":"ws://localhost:6080","vnc_http":"http://localhost:6080"}
         ]
     depends_on:
       - worker
