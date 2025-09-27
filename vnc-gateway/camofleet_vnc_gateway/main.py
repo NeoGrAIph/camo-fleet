@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import inspect
 import logging
+import uuid
 from functools import lru_cache
 from collections.abc import Iterable, Mapping
 from http.cookies import SimpleCookie
@@ -153,7 +154,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
         request: Request,
         state: GatewayState = Depends(get_state),
     ) -> Response:
-        suffix = f"/{path}" if path else "/"
+        suffix = _normalise_client_path(f"/{path}" if path else "/")
         return await _proxy_http(request, state=state, path_suffix=suffix)
 
     @app.websocket("/vnc/websockify")
@@ -257,6 +258,39 @@ def _build_upstream_url(
         combined_path = f"/{combined_path}"
     query_part = f"?{query}" if query else ""
     return f"{scheme}://{host}:{port}{combined_path}{query_part}"
+
+
+def _normalise_client_path(path_suffix: str) -> str:
+    """Strip session identifiers injected by public overrides.
+
+    Operators often expose the gateway through ingress rules such as
+    ``https://example/vnc/{id}``.  The control plane appends ``vnc.html`` from the
+    runner payload, resulting in client requests like ``/vnc/<uuid>/vnc.html``.
+    The upstream websockify server, however, serves assets from its document
+    root, so the dynamic segment must be removed before proxying the request.
+    """
+
+    if not path_suffix or path_suffix == "/":
+        return "/"
+
+    has_leading_slash = path_suffix.startswith("/")
+    segments = [segment for segment in path_suffix.split("/") if segment]
+    if not segments:
+        return "/" if has_leading_slash else ""
+
+    first, *rest = segments
+    try:
+        uuid.UUID(first)
+    except ValueError:
+        stripped = segments
+    else:
+        stripped = rest
+
+    if not stripped:
+        return "/" if has_leading_slash else ""
+
+    normalised = "/".join(stripped)
+    return f"/{normalised}" if has_leading_slash else normalised
 
 
 def _join_paths(prefix: str, suffix: str) -> str:

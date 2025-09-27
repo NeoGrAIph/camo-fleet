@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from typing import Iterable
-from urllib.parse import urlparse, urlunparse
+from typing import Any, Iterable, Mapping
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
@@ -117,7 +117,11 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                     continue
                 for item in response.json():
                     public_ws_endpoint = build_public_ws_endpoint(cfg, worker.name, item["id"])
-                    vnc_payload = item.get("vnc", item.get("vnc_info", {}))
+                    vnc_payload = apply_vnc_overrides(
+                        worker,
+                        item["id"],
+                        item.get("vnc", item.get("vnc_info", {})),
+                    )
                     vnc_enabled = item.get("vnc_enabled")
                     if vnc_enabled is None and vnc_payload:
                         vnc_enabled = bool(vnc_payload.get("http") or vnc_payload.get("ws"))
@@ -159,6 +163,8 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         body.setdefault("browser", "camoufox")
         if "vnc" not in body and "vnc_info" in body:
             body["vnc"] = body.pop("vnc_info")
+        if "vnc" in body:
+            body["vnc"] = apply_vnc_overrides(worker, body["id"], body["vnc"])
         if "vnc_enabled" not in body and "vnc" in body:
             body["vnc_enabled"] = bool(body["vnc"].get("http") or body["vnc"].get("ws"))
         return CreateSessionResponse(worker=worker.name, **body)
@@ -180,6 +186,8 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         body.setdefault("browser", "camoufox")
         if "vnc" not in body and "vnc_info" in body:
             body["vnc"] = body.pop("vnc_info")
+        if "vnc" in body:
+            body["vnc"] = apply_vnc_overrides(worker, body["id"], body["vnc"])
         if "vnc_enabled" not in body and "vnc" in body:
             body["vnc_enabled"] = bool(body["vnc"].get("http") or body["vnc"].get("ws"))
         return SessionDescriptor(worker=worker.name, **body)
@@ -217,6 +225,8 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         body.setdefault("browser", "camoufox")
         if "vnc" not in body and "vnc_info" in body:
             body["vnc"] = body.pop("vnc_info")
+        if "vnc" in body:
+            body["vnc"] = apply_vnc_overrides(worker, body["id"], body["vnc"])
         if "vnc_enabled" not in body and "vnc" in body:
             body["vnc_enabled"] = bool(body["vnc"].get("http") or body["vnc"].get("ws"))
         return SessionDescriptor(worker=worker.name, **body)
@@ -298,6 +308,79 @@ async def gather_worker_status(workers: Iterable[WorkerConfig], cfg: ControlSett
         return []
 
     return list(await asyncio.gather(*(_fetch_status(worker) for worker in worker_list)))
+
+
+def apply_vnc_overrides(
+    worker: WorkerConfig,
+    session_id: str,
+    payload: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Return VNC metadata with public overrides applied.
+
+    Workers typically report loopback URLs (``http://127.0.0.1``) that are only
+    meaningful from inside the cluster.  ``CONTROL_WORKERS`` allows operators to
+    supply ingress-facing endpoints; this helper merges those values with the
+    runner payload so API clients receive usable links.
+    """
+
+    source: Mapping[str, Any] = payload or {}
+    if not source:
+        return {}
+
+    result: dict[str, Any] = {**source}
+    result["http"] = _build_public_vnc_url(worker.vnc_http, session_id, source.get("http"))
+    result["ws"] = _build_public_vnc_url(worker.vnc_ws, session_id, source.get("ws"))
+    return result
+
+
+def _build_public_vnc_url(
+    override_template: str | None,
+    session_id: str,
+    fallback: str | None,
+) -> str | None:
+    if not override_template:
+        return fallback
+    try:
+        formatted = override_template.format(id=session_id)
+    except Exception as exc:  # pragma: no cover - defensive against bad config
+        LOGGER.warning("Invalid VNC override %s: %s", override_template, exc)
+        return fallback
+    try:
+        override_parts = urlparse(formatted)
+    except ValueError as exc:  # pragma: no cover - defensive against bad config
+        LOGGER.warning("Failed to parse VNC override URL %s: %s", formatted, exc)
+        return fallback
+
+    fallback_parts = urlparse(fallback) if fallback else None
+
+    scheme = override_parts.scheme or (fallback_parts.scheme if fallback_parts else "")
+    netloc = override_parts.netloc or (fallback_parts.netloc if fallback_parts else "")
+    path = _merge_vnc_paths(override_parts.path, fallback_parts.path if fallback_parts else "")
+
+    query_items = parse_qsl(override_parts.query, keep_blank_values=True)
+    seen = {key for key, _ in query_items}
+    if fallback_parts and fallback_parts.query:
+        for key, value in parse_qsl(fallback_parts.query, keep_blank_values=True):
+            if key not in seen:
+                query_items.append((key, value))
+                seen.add(key)
+    query = urlencode(query_items)
+
+    return urlunparse((scheme, netloc, path or "/", "", query, ""))
+
+
+def _merge_vnc_paths(override_path: str, fallback_path: str) -> str:
+    base = (override_path or "").rstrip("/")
+    if not fallback_path or fallback_path == "/":
+        return base or fallback_path or "/"
+    if base and fallback_path.rstrip("/") == base:
+        return base or "/"
+    if base and fallback_path.startswith(f"{base}/"):
+        return fallback_path
+    suffix = fallback_path.lstrip("/")
+    if not base:
+        return f"/{suffix}" if suffix else "/"
+    return f"{base}/{suffix}" if suffix else base or "/"
 
 
 def build_public_ws_endpoint(settings: ControlSettings, worker_name: str, session_id: str) -> str:
