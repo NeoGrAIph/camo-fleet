@@ -100,5 +100,8 @@ workerVnc:
   extraEnv: []
   sessionDefaults: {}
   controlOverrides:
+    # The runner always advertises gateway URLs under the /vnc prefix. Keep
+    # that suffix when overriding the hosts so that target_port hints continue
+    # to work through Traefik.
     ws: null
     http: null
