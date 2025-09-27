@@ -24,5 +24,7 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["camoufox_runner"]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
