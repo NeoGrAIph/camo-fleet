@@ -9,12 +9,24 @@ spec:
   routes:
     - match: Host(`camofleet.services.synestra.tech`) && PathPrefix(`/api`)
       kind: Rule
+      middlewares:
+        - name: camofleet-strip-api
+          namespace: camofleet
       services:
         - name: camofleet-camo-fleet-control
           namespace: camofleet
           port: 9000
     - match: Host(`camofleet.services.synestra.tech`) && PathPrefix(`/vnc`)
       kind: Rule
+      services:
+        - name: camofleet-camo-fleet-worker-vnc
+          namespace: camofleet
+          port: 6900
+    - match: Host(`camofleet.services.synestra.tech`) && PathPrefix(`/websockify`)
+      kind: Rule
+      middlewares:
+        - name: camofleet-add-vnc-prefix
+          namespace: camofleet
       services:
         - name: camofleet-camo-fleet-worker-vnc
           namespace: camofleet
