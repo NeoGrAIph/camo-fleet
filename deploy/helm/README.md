@@ -44,9 +44,10 @@ Open `my-values.yaml` and adjust the options that differ in your environment:
   ```
   Эти значения попадут в `CONTROL_WORKERS`, поэтому UI и control-plane будут возвращать корректные публичные URL для noVNC.
 - **VNC gateway** – порты, указанные в `workerVnc.gatewayPort` и `workerVnc.vncPortRange.ws`, автоматически попадают в
-  переменные окружения `VNCGATEWAY_PORT`, `VNCGATEWAY_MIN_PORT`, `VNCGATEWAY_MAX_PORT`. Шлюз внутри Pod обращается к runner-у
-  по `localhost` и проксирует публичный маршрут `/vnc`, поэтому дополнительные настройки требуются только в исключительных
-  сценариях.
+  переменные окружения `VNCGATEWAY_PORT`, `VNCGATEWAY_MIN_PORT`, `VNCGATEWAY_MAX_PORT`. Значение по умолчанию `gatewayPort=6080`
+  специально вынесено за пределы WebSocket-пула `6900-6904`, а шаблон Helm прерывает установку, если вы зададите порт, который
+  пересекается с WebSocket- или raw VNC-диапазонами. Шлюз внутри Pod обращается к runner-у по `localhost` и проксирует публичный
+  маршрут `/vnc`, поэтому дополнительные настройки требуются только в исключительных сценариях.
 - **`control.config.workers`** – оставьте `null`, чтобы Helm автоматически добавил сервисы `camofleet-worker` и `camofleet-worker-vnc`. Меняйте список только если подключаете внешние воркеры или меняете имена сервисов.
 
 Save the file when you are done.

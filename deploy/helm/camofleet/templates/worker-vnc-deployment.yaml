@@ -48,6 +48,9 @@ spec:
 {{- if and (ge $gatewayPort $rawMin) (le $gatewayPort $rawMax) }}
   {{- fail (printf "workerVnc.gatewayPort (%d) overlaps raw range %d-%d" $gatewayPort $rawMin $rawMax) }}
 {{- end }}
+{{- if and (ge $gatewayPort $wsMin) (le $gatewayPort $wsMax) }}
+  {{- fail (printf "workerVnc.gatewayPort (%d) overlaps ws range %d-%d" $gatewayPort $wsMin $wsMax) }}
+{{- end }}
       containers:
         - name: runner
           image: {{ include "camofleet.image" (dict "Values" .Values "repository" .Values.workerVnc.runnerImage.repository "tag" .Values.workerVnc.runnerImage.tag) }}

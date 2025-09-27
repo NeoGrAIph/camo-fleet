@@ -21,7 +21,7 @@ spec:
       services:
         - name: camofleet-camo-fleet-worker-vnc
           namespace: camofleet
-          port: 6900
+          port: 6080
     - match: Host(`camofleet.services.synestra.tech`) && PathPrefix(`/websockify`)
       kind: Rule
       middlewares:
@@ -30,7 +30,7 @@ spec:
       services:
         - name: camofleet-camo-fleet-worker-vnc
           namespace: camofleet
-          port: 6900
+          port: 6080
     - match: Host(`camofleet.services.synestra.tech`)
       kind: Rule
       priority: 1

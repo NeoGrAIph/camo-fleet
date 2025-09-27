@@ -40,8 +40,8 @@ kubectl describe ingressroute -n camofleet camofleet
 
 - `/` → `camofleet-camo-fleet-ui:80`
 - `/api` → `camofleet-camo-fleet-control:9000`
-- `/vnc` → `camofleet-camo-fleet-worker-vnc:6900` (контейнер gateway внутри worker отвечает за noVNC)
-- `/websockify` → middleware добавляет префикс `/vnc` и проксирует на `camofleet-camo-fleet-worker-vnc:6900`, чтобы внешние noVNC WebSocket-URL выглядели как `https://camofleet.services.synestra.tech/websockify?token=...`
+- `/vnc` → `camofleet-camo-fleet-worker-vnc:6080` (контейнер gateway внутри worker отвечает за noVNC)
+- `/websockify` → middleware добавляет префикс `/vnc` и проксирует на `camofleet-camo-fleet-worker-vnc:6080`, чтобы внешние noVNC WebSocket-URL выглядели как `https://camofleet.services.synestra.tech/websockify?token=...`
 
 ## Remove the publication
 
