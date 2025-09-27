@@ -33,6 +33,16 @@ WORKDIR /opt/app
 COPY runner /opt/app
 RUN pip install --no-cache-dir --break-system-packages -e .
 
+RUN python - <<'PY'
+import pathlib
+import camoufox
+
+camoufox_path = pathlib.Path(camoufox.__file__).resolve()
+if camoufox_path.is_relative_to("/opt/app"):
+    raise SystemExit(f"Editable stub camoufox detected at {camoufox_path}")
+print(f"Using camoufox from {camoufox_path}")
+PY
+
 # Pre-fetch Camoufox resources under the pwuser cache
 RUN mkdir -p /data/artifacts /data/userdata /data/tmp /home/pwuser/.cache && \
     for attempt in 1 2 3; do \
