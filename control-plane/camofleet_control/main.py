@@ -370,17 +370,35 @@ def _build_public_vnc_url(
 
 
 def _merge_vnc_paths(override_path: str, fallback_path: str) -> str:
-    base = (override_path or "").rstrip("/")
-    if not fallback_path or fallback_path == "/":
-        return base or fallback_path or "/"
-    if base and fallback_path.rstrip("/") == base:
-        return base or "/"
-    if base and fallback_path.startswith(f"{base}/"):
-        return fallback_path
-    suffix = fallback_path.lstrip("/")
-    if not base:
-        return f"/{suffix}" if suffix else "/"
-    return f"{base}/{suffix}" if suffix else base or "/"
+    original_override = override_path or ""
+    base = original_override.rstrip("/")
+    fallback = fallback_path or ""
+
+    if not fallback or fallback == "/":
+        return base or fallback or "/"
+
+    base_segments = [segment for segment in base.split("/") if segment]
+    fallback_segments = [segment for segment in fallback.split("/") if segment]
+
+    if not base_segments:
+        if not fallback_segments:
+            return "/" if (original_override.startswith("/") or fallback.startswith("/")) else ""
+        prefix = "/" if (original_override.startswith("/") or fallback.startswith("/")) else ""
+        return f"{prefix}{'/'.join(fallback_segments)}"
+
+    common = 0
+    limit = min(len(base_segments), len(fallback_segments))
+    while common < limit and base_segments[common] == fallback_segments[common]:
+        common += 1
+
+    merged_segments = base_segments + fallback_segments[common:]
+
+    if not merged_segments:
+        return "/"
+
+    leading_slash = original_override.startswith("/") or fallback.startswith("/")
+    joined = "/".join(merged_segments)
+    return f"/{joined}" if leading_slash else joined
 
 
 def build_public_ws_endpoint(settings: ControlSettings, worker_name: str, session_id: str) -> str:
