@@ -39,7 +39,7 @@ Open `my-values.yaml` and adjust the options that differ in your environment:
   ```yaml
   workerVnc:
     controlOverrides:
-      ws: wss://camofleet.services.synestra.tech/vnc/websockify?token={id}
+      ws: wss://camofleet.services.synestra.tech/websockify?token={id}
       http: https://camofleet.services.synestra.tech/vnc/{id}
   ```
   Эти значения попадут в `CONTROL_WORKERS`, поэтому UI и control-plane будут возвращать корректные публичные URL для noVNC.
@@ -139,10 +139,10 @@ Release "camofleet" has been upgraded. Happy Helming!
      --create-namespace
      --set-string "global.imageRegistry=${IMAGE_REGISTRY}"
      --set-string "ui.controlHost=${PUBLIC_HOST}"
-    --set-string "ui.controlScheme=https"
-    --set-string "ui.controlPort=443"
-    --set-string "workerVnc.controlOverrides.ws=wss://${PUBLIC_HOST}/vnc/websockify?token={id}"
-    --set-string "workerVnc.controlOverrides.http=https://${PUBLIC_HOST}/vnc/{id}"
+     --set-string "ui.controlScheme=https"
+     --set-string "ui.controlPort=443"
+     --set-string "workerVnc.controlOverrides.ws=wss://${PUBLIC_HOST}/websockify?token={id}"
+     --set-string "workerVnc.controlOverrides.http=https://${PUBLIC_HOST}/vnc/{id}"
    )
 
    # --- деплой через helm ---
@@ -194,7 +194,7 @@ The Helm chart intentionally stops at creating Services. Apply the manifests in 
    - Включите опцию VNC/live screen.
    - Запустите сессию и дождитесь статуса `RUNNING`.
 
-4. **Откройте live-экран.** В таблице сессий нажмите `Open VNC` или `Live Screen`. Браузер загрузит noVNC iframe, который установит WebSocket-подключение на `wss://camofleet.services.synestra.tech/vnc?...`.
+4. **Откройте live-экран.** В таблице сессий нажмите `Open VNC` или `Live Screen`. Браузер загрузит noVNC iframe, который установит WebSocket-подключение на `wss://camofleet.services.synestra.tech/websockify?...`.
 
 5. **Наблюдайте цепочку запросов.**
    - В DevTools → Network убедитесь, что открылись два WebSocket-подключения (по одному от каждого окна).
