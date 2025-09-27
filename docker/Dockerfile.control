@@ -9,7 +9,10 @@ ENV PIP_BREAK_SYSTEM_PACKAGES=1
 RUN pip install --no-cache-dir --upgrade pip
 
 WORKDIR /opt/app
+COPY shared /opt/shared
+COPY VERSION /opt/VERSION
 COPY control-plane /opt/app
+ENV PYTHONPATH=/opt
 
 ARG INSTALL_MODE=release
 RUN if [ "$INSTALL_MODE" = "dev" ]; then \
