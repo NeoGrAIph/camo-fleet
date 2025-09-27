@@ -79,6 +79,7 @@ workerVnc:
     pullPolicy: IfNotPresent
   gatewayResources: {}
   gatewayExtraEnv: []
+  # Exposed through the gateway container as VNCGATEWAY_PORT and published by the Service/Ingress.
   gatewayPort: 6900
   image:
     repository: camofleet-worker
@@ -91,6 +92,8 @@ workerVnc:
     type: ClusterIP
     port: 8080
   vncPortRange:
+    # Controls the VNCGATEWAY_MIN_PORT/VNCGATEWAY_MAX_PORT environment variables for the
+    # gateway and the dynamic ports allocated by the runner container.
     ws:
       min: 6900
       max: 6904

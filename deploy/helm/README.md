@@ -43,6 +43,10 @@ Open `my-values.yaml` and adjust the options that differ in your environment:
       http: https://camofleet.services.synestra.tech/vnc/{id}
   ```
   Эти значения попадут в `CONTROL_WORKERS`, поэтому UI и control-plane будут возвращать корректные публичные URL для noVNC.
+- **VNC gateway** – порты, указанные в `workerVnc.gatewayPort` и `workerVnc.vncPortRange.ws`, автоматически попадают в
+  переменные окружения `VNCGATEWAY_PORT`, `VNCGATEWAY_MIN_PORT`, `VNCGATEWAY_MAX_PORT`. Шлюз внутри Pod обращается к runner-у
+  по `localhost` и проксирует публичный маршрут `/vnc`, поэтому дополнительные настройки требуются только в исключительных
+  сценариях.
 - **`control.config.workers`** – оставьте `null`, чтобы Helm автоматически добавил сервисы `camofleet-worker` и `camofleet-worker-vnc`. Меняйте список только если подключаете внешние воркеры или меняете имена сервисов.
 
 Save the file when you are done.
