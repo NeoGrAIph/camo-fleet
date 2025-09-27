@@ -56,9 +56,9 @@ spec:
             - name: RUNNER_PORT
               value: "{{ .Values.workerVnc.runnerPort }}"
             - name: RUNNER_VNC_WS_BASE
-              value: ws://localhost:{{ .Values.workerVnc.gatewayPort }}
+              value: ws://localhost:{{ .Values.workerVnc.gatewayPort }}/vnc
             - name: RUNNER_VNC_HTTP_BASE
-              value: http://localhost:{{ .Values.workerVnc.gatewayPort }}
+              value: http://localhost:{{ .Values.workerVnc.gatewayPort }}/vnc
             - name: RUNNER_VNC_PORT_MIN
               value: "{{ .Values.workerVnc.vncPortRange.raw.min }}"
             - name: RUNNER_VNC_PORT_MAX
