@@ -327,9 +327,24 @@ def apply_vnc_overrides(
     if not source:
         return {}
 
+    http_url = source.get("http")
+    ws_url = source.get("ws")
+
+    if not http_url and not ws_url:
+        return {}
+
     result: dict[str, Any] = {**source}
-    result["http"] = _build_public_vnc_url(worker.vnc_http, session_id, source.get("http"))
-    result["ws"] = _build_public_vnc_url(worker.vnc_ws, session_id, source.get("ws"))
+
+    if http_url:
+        result["http"] = _build_public_vnc_url(worker.vnc_http, session_id, http_url)
+    else:
+        result.pop("http", None)
+
+    if ws_url:
+        result["ws"] = _build_public_vnc_url(worker.vnc_ws, session_id, ws_url)
+    else:
+        result.pop("ws", None)
+
     return result
 
 
