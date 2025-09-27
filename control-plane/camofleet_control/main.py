@@ -401,6 +401,12 @@ def _merge_vnc_paths(override_path: str, fallback_path: str) -> str:
         prefix = "/" if (original_override.startswith("/") or fallback.startswith("/")) else ""
         return f"{prefix}{'/'.join(fallback_segments)}"
 
+    if fallback_segments and len(fallback_segments) >= len(base_segments):
+        if fallback_segments[-len(base_segments):] == base_segments:
+            leading_slash = original_override.startswith("/") or fallback.startswith("/")
+            joined_base = "/".join(base_segments)
+            return f"/{joined_base}" if leading_slash else joined_base
+
     common = 0
     limit = min(len(base_segments), len(fallback_segments))
     while common < limit and base_segments[common] == fallback_segments[common]:
