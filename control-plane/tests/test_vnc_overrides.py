@@ -56,3 +56,19 @@ def test_apply_vnc_overrides_preserves_target_port(worker: WorkerConfig) -> None
     assert result["ws"] == (
         "wss://public.example/websockify?token=session-789&target_port=6930"
     )
+
+
+def test_apply_vnc_overrides_avoids_duplicate_segments(worker: WorkerConfig) -> None:
+    payload = {
+        "http": "http://127.0.0.1:6930/vnc/vnc.html?path=vnc/websockify&target_port=6930",
+        "ws": "ws://127.0.0.1:6930/websockify?target_port=6930",
+    }
+
+    result = apply_vnc_overrides(worker, "session-246", payload)
+
+    assert result["http"] == (
+        "https://public.example/vnc/session-246/vnc.html?path=vnc%2Fwebsockify&target_port=6930"
+    )
+    assert result["ws"] == (
+        "wss://public.example/websockify?token=session-246&target_port=6930"
+    )
