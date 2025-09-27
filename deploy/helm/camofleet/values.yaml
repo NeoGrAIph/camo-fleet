@@ -80,7 +80,7 @@ workerVnc:
   gatewayResources: {}
   gatewayExtraEnv: []
   # Exposed through the gateway container as VNCGATEWAY_PORT and published by the Service/Ingress.
-  gatewayPort: 6900
+  gatewayPort: 6080
   image:
     repository: camofleet-worker
     tag: latest
