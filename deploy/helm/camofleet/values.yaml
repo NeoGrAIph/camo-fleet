@@ -103,5 +103,9 @@ workerVnc:
   extraEnv: []
   sessionDefaults: {}
   controlOverrides:
+    # Override the public URLs that the control plane returns in API responses.
+    # When setting custom values make sure the base paths already include the `/vnc`
+    # suffix (for example `wss://vnc.example.com/vnc`) so that runners can append
+    # `vnc/websockify` without requiring extra middleware on the ingress.
     ws: null
     http: null
