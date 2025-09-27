@@ -84,12 +84,16 @@ spec:
           image: {{ include "camofleet.image" (dict "Values" .Values "repository" .Values.workerVnc.gatewayImage.repository "tag" .Values.workerVnc.gatewayImage.tag) }}
           imagePullPolicy: {{ .Values.workerVnc.gatewayImage.pullPolicy }}
           env:
-            - name: VNC_DEFAULT_HOST
-              value: 127.0.0.1
-            - name: VNC_WEB_RANGE
-              value: {{ printf "%d-%d" $wsMin $wsMax }}
-            - name: VNC_BASE_PORT
-              value: "{{ .Values.workerVnc.vncPortRange.raw.min }}"
+            - name: VNCGATEWAY_PORT
+              value: "{{ .Values.workerVnc.gatewayPort }}"
+            - name: VNCGATEWAY_RUNNER_HOST
+              value: "localhost"
+            - name: VNCGATEWAY_RUNNER_PATH_PREFIX
+              value: "/vnc"
+            - name: VNCGATEWAY_MIN_PORT
+              value: "{{ .Values.workerVnc.vncPortRange.ws.min }}"
+            - name: VNCGATEWAY_MAX_PORT
+              value: "{{ .Values.workerVnc.vncPortRange.ws.max }}"
 {{- with .Values.workerVnc.gatewayExtraEnv }}
 {{ toYaml . | indent 12 }}
 {{- end }}
