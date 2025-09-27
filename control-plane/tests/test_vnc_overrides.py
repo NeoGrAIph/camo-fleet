@@ -39,6 +39,16 @@ def test_apply_vnc_overrides_handles_missing_payload(worker: WorkerConfig) -> No
     assert result == {}
 
 
+def test_apply_vnc_overrides_treats_falsy_endpoints_as_missing(
+    worker: WorkerConfig,
+) -> None:
+    payload = {"http": None, "ws": None, "password_protected": False}
+
+    result = apply_vnc_overrides(worker, "session-457", payload)
+
+    assert result == {}
+
+
 def test_apply_vnc_overrides_preserves_target_port(worker: WorkerConfig) -> None:
     payload = {
         # Runner originally builds this from a loopback URL without ``target_port``;
