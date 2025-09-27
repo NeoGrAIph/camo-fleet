@@ -56,9 +56,9 @@ spec:
             - name: RUNNER_PORT
               value: "{{ .Values.workerVnc.runnerPort }}"
             - name: RUNNER_VNC_WS_BASE
-              value: ws://localhost:{{ .Values.workerVnc.gatewayPort }}/vnc
+              value: ws://localhost:{{ .Values.workerVnc.gatewayPort }}
             - name: RUNNER_VNC_HTTP_BASE
-              value: http://localhost:{{ .Values.workerVnc.gatewayPort }}/vnc
+              value: http://localhost:{{ .Values.workerVnc.gatewayPort }}
             - name: RUNNER_VNC_PORT_MIN
               value: "{{ .Values.workerVnc.vncPortRange.raw.min }}"
             - name: RUNNER_VNC_PORT_MAX
@@ -84,14 +84,12 @@ spec:
           image: {{ include "camofleet.image" (dict "Values" .Values "repository" .Values.workerVnc.gatewayImage.repository "tag" .Values.workerVnc.gatewayImage.tag) }}
           imagePullPolicy: {{ .Values.workerVnc.gatewayImage.pullPolicy }}
           env:
-            - name: VNCGATEWAY_PORT
-              value: "{{ .Values.workerVnc.gatewayPort }}"
-            - name: VNCGATEWAY_RUNNER_HOST
-              value: localhost
-            - name: VNCGATEWAY_MIN_PORT
-              value: "{{ .Values.workerVnc.vncPortRange.ws.min }}"
-            - name: VNCGATEWAY_MAX_PORT
-              value: "{{ .Values.workerVnc.vncPortRange.ws.max }}"
+            - name: VNC_DEFAULT_HOST
+              value: 127.0.0.1
+            - name: VNC_WEB_RANGE
+              value: {{ printf "%d-%d" $wsMin $wsMax }}
+            - name: VNC_BASE_PORT
+              value: "{{ .Values.workerVnc.vncPortRange.raw.min }}"
 {{- with .Values.workerVnc.gatewayExtraEnv }}
 {{ toYaml . | indent 12 }}
 {{- end }}

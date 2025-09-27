@@ -690,7 +690,7 @@ class SessionManager:
                     adjusted_query_params["path"] = path_value
         if adjusted_query_params:
             query_items.extend(adjusted_query_params.items())
-        if not any(key == "target_port" for key, _ in query_items):
+        if override_port is not None and not any(key == "target_port" for key, _ in query_items):
             query_items.append(("target_port", str(port)))
         query = urlencode(query_items)
         return urlunparse((scheme, netloc, combined_path, "", query, ""))
