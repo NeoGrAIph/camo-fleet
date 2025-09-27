@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from typing import Any, Iterable
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from typing import Iterable
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
@@ -117,11 +117,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                     continue
                 for item in response.json():
                     public_ws_endpoint = build_public_ws_endpoint(cfg, worker.name, item["id"])
-                    vnc_payload = build_public_vnc_payload(
-                        worker,
-                        item["id"],
-                        item.get("vnc", item.get("vnc_info", {})),
-                    )
+                    vnc_payload = item.get("vnc", item.get("vnc_info", {}))
                     vnc_enabled = item.get("vnc_enabled")
                     if vnc_enabled is None and vnc_payload:
                         vnc_enabled = bool(vnc_payload.get("http") or vnc_payload.get("ws"))
@@ -163,8 +159,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         body.setdefault("browser", "camoufox")
         if "vnc" not in body and "vnc_info" in body:
             body["vnc"] = body.pop("vnc_info")
-        body["vnc"] = build_public_vnc_payload(worker, body["id"], body.get("vnc", {}))
-        if "vnc_enabled" not in body:
+        if "vnc_enabled" not in body and "vnc" in body:
             body["vnc_enabled"] = bool(body["vnc"].get("http") or body["vnc"].get("ws"))
         return CreateSessionResponse(worker=worker.name, **body)
 
@@ -185,8 +180,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         body.setdefault("browser", "camoufox")
         if "vnc" not in body and "vnc_info" in body:
             body["vnc"] = body.pop("vnc_info")
-        body["vnc"] = build_public_vnc_payload(worker, body["id"], body.get("vnc", {}))
-        if "vnc_enabled" not in body:
+        if "vnc_enabled" not in body and "vnc" in body:
             body["vnc_enabled"] = bool(body["vnc"].get("http") or body["vnc"].get("ws"))
         return SessionDescriptor(worker=worker.name, **body)
 
@@ -223,8 +217,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         body.setdefault("browser", "camoufox")
         if "vnc" not in body and "vnc_info" in body:
             body["vnc"] = body.pop("vnc_info")
-        body["vnc"] = build_public_vnc_payload(worker, body["id"], body.get("vnc", {}))
-        if "vnc_enabled" not in body:
+        if "vnc_enabled" not in body and "vnc" in body:
             body["vnc_enabled"] = bool(body["vnc"].get("http") or body["vnc"].get("ws"))
         return SessionDescriptor(worker=worker.name, **body)
 
@@ -312,116 +305,6 @@ def build_public_ws_endpoint(settings: ControlSettings, worker_name: str, sessio
 
     prefix = normalise_public_prefix(settings.public_api_prefix)
     return f"{prefix}/sessions/{worker_name}/{session_id}/ws"
-
-
-def build_public_vnc_payload(
-    worker: WorkerConfig, session_id: str, payload: dict[str, Any] | None
-) -> dict[str, Any]:
-    """Apply control-plane VNC URL overrides to a session payload."""
-
-    if not payload:
-        return {}
-
-    result: dict[str, Any] = dict(payload)
-
-    http_override = _resolve_vnc_override(worker, session_id, worker.vnc_http)
-    if http_override:
-        result["http"] = _merge_vnc_url(payload.get("http"), http_override)
-
-    ws_override = _resolve_vnc_override(worker, session_id, worker.vnc_ws)
-    if ws_override:
-        result["ws"] = _merge_vnc_url(payload.get("ws"), ws_override)
-
-    return result
-
-
-def _resolve_vnc_override(worker: WorkerConfig, session_id: str, template: str | None) -> str | None:
-    """Return a formatted override URL for the given worker/session."""
-
-    if not template:
-        return None
-
-    # Support lightweight placeholders without relying on ``str.format`` which would
-    # raise ``KeyError`` when users leave braces unpaired.
-    value = template.replace("{id}", session_id).replace("{worker}", worker.name)
-    return value
-
-
-def _merge_vnc_url(original: str | None, override: str) -> str:
-    """Combine the runner-provided URL with the configured override."""
-
-    if not original:
-        return override
-
-    try:
-        original_parsed = urlparse(original)
-        override_parsed = urlparse(override)
-    except ValueError:
-        return override
-
-    if not override_parsed.scheme or not override_parsed.netloc:
-        return override
-
-    base_path = override_parsed.path.rstrip("/")
-    original_path = original_parsed.path.lstrip("/")
-    base_segment = base_path.lstrip("/")
-    if base_path and original_path:
-        if original_path == base_segment or original_path.startswith(f"{base_segment}/"):
-            combined_path = base_path or "/"
-        else:
-            combined_path = f"{base_path}/{original_path}"
-    elif base_path:
-        combined_path = base_path or "/"
-    elif original_path:
-        combined_path = f"/{original_path}"
-    else:
-        combined_path = "/"
-    if not combined_path.startswith("/"):
-        combined_path = f"/{combined_path}"
-
-    query_items = parse_qsl(override_parsed.query, keep_blank_values=True)
-    existing_keys = {key for key, _ in query_items}
-    original_items = parse_qsl(original_parsed.query, keep_blank_values=True)
-
-    for key, value in original_items:
-        if key == "path" and base_segment:
-            candidate = value.lstrip("/")
-            if candidate:
-                if not (
-                    candidate == base_segment or candidate.startswith(f"{base_segment}/")
-                ):
-                    value = f"{base_segment}/{candidate}"
-                else:
-                    value = candidate
-            else:
-                value = base_segment
-        if key in existing_keys:
-            continue
-        query_items.append((key, value))
-        existing_keys.add(key)
-
-    if "target_port" not in existing_keys:
-        target_port = None
-        for key, value in original_items:
-            if key == "target_port":
-                target_port = value
-                break
-        if target_port is None and original_parsed.port is not None:
-            target_port = str(original_parsed.port)
-        if target_port is not None:
-            query_items.append(("target_port", target_port))
-
-    query_string = urlencode(query_items, doseq=True)
-    return urlunparse(
-        (
-            override_parsed.scheme,
-            override_parsed.netloc,
-            combined_path,
-            "",
-            query_string,
-            "",
-        )
-    )
 
 
 def build_worker_ws_endpoint(worker: WorkerConfig, session_id: str) -> str:
