@@ -3,8 +3,11 @@ from __future__ import annotations
 import pytest
 
 from camofleet_control.config import ControlSettings, WorkerConfig
+from urllib.parse import parse_qs, urlparse
+
 from camofleet_control.main import (
     AppState,
+    build_public_vnc_payload,
     build_public_ws_endpoint,
     build_worker_ws_endpoint,
     normalise_public_prefix,
@@ -82,3 +85,49 @@ def test_build_worker_ws_endpoint() -> None:
         build_worker_ws_endpoint(worker, "sess")
         == "wss://worker.example/prefix/sessions/sess/ws"
     )
+
+
+def test_build_public_vnc_payload_without_overrides() -> None:
+    worker = WorkerConfig(name="vnc", url="http://worker:8080", supports_vnc=True)
+    payload = {
+        "http": "http://localhost:6930/vnc.html?path=websockify",
+        "ws": "ws://localhost:6930/websockify",
+        "password_protected": False,
+    }
+
+    result = build_public_vnc_payload(worker, "session-1", payload)
+
+    assert result == payload
+    assert result is not payload
+
+
+def test_build_public_vnc_payload_with_overrides() -> None:
+    worker = WorkerConfig(
+        name="vnc",
+        url="http://worker:8080",
+        supports_vnc=True,
+        vnc_http="https://public.example/vnc/{id}",
+        vnc_ws="wss://public.example/websockify?token={id}",
+    )
+    payload = {
+        "http": "http://localhost:6930/vnc.html?path=websockify",
+        "ws": "ws://localhost:6930/websockify",
+    }
+
+    result = build_public_vnc_payload(worker, "session-42", payload)
+
+    parsed_http = urlparse(result["http"])
+    assert parsed_http.scheme == "https"
+    assert parsed_http.netloc == "public.example"
+    assert parsed_http.path == "/vnc/session-42/vnc.html"
+    http_query = parse_qs(parsed_http.query)
+    assert http_query["path"] == ["vnc/session-42/websockify"]
+    assert http_query["target_port"] == ["6930"]
+
+    parsed_ws = urlparse(result["ws"])
+    assert parsed_ws.scheme == "wss"
+    assert parsed_ws.netloc == "public.example"
+    assert parsed_ws.path == "/websockify"
+    ws_query = parse_qs(parsed_ws.query)
+    assert ws_query["token"] == ["session-42"]
+    assert ws_query["target_port"] == ["6930"]
