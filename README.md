@@ -48,7 +48,7 @@ Camo-fleet/
    - Control-plane API: `http://localhost:9000`
    - Headless worker API: `http://localhost:8080`
    - VNC worker API: `http://localhost:8081`
-  - VNC gateway: `http://localhost:6080` — проксирует noVNC/ws трафик на нужный runner-порт
+   - VNC gateway: `http://localhost:6080/vnc` — проксирует noVNC/ws трафик на нужный runner-порт
 4. Тесты также можно прогнать внутри контейнеров:
    ```bash
    docker compose -f docker-compose.dev.yml run --rm --entrypoint pytest worker
@@ -105,7 +105,7 @@ Camo-fleet/
 3. После старта сервисов:
    - UI: `http://localhost:8080`
    - Control-plane API: `http://localhost:9000`
-  - VNC gateway: `http://localhost:6080` (UI подставляет `target_port` автоматически)
+   - VNC gateway: `http://localhost:6080/vnc` (UI подставляет `target_port` автоматически)
 4. Для остановки окружения выполните:
    ```powershell
    docker compose down
@@ -145,7 +145,7 @@ kubectl apply -k deploy/k8s
 
 | Переменная | Значение по умолчанию | Описание |
 | ---------- | --------------------- | -------- |
-| `RUNNER_VNC_WS_BASE` | `None` | Базовый адрес (со схемой и хостом) для генерации WebSocket URL предпросмотра. Путь добавляется автоматически, поэтому в большинстве случаев достаточно указать только хост и порт. |
+| `RUNNER_VNC_WS_BASE` | `None` | Базовый адрес (со схемой, хостом и обычно путём `/vnc`) для генерации WebSocket URL предпросмотра. Если шлюз опубликован без префикса, путь можно опустить. |
 | `RUNNER_VNC_HTTP_BASE` | `None` | Аналогично `RUNNER_VNC_WS_BASE`, но для noVNC iframe (`/vnc.html`). |
 | `RUNNER_VNC_DISPLAY_MIN` / `RUNNER_VNC_DISPLAY_MAX` | `100` / `199` | Диапазон виртуальных `DISPLAY`, выделяемых Xvfb. |
 | `RUNNER_VNC_PORT_MIN` / `RUNNER_VNC_PORT_MAX` | `5900` / `5999` | Диапазон TCP-портов для `x11vnc`. |
@@ -158,7 +158,7 @@ kubectl apply -k deploy/k8s
 | `RUNNER_PREWARM_CHECK_INTERVAL_SECONDS` | `2.0` | Период проверки/дополнения пула тёплых резервов. |
 | `RUNNER_START_URL_WAIT` | `load` | Как долго ждать загрузку `start_url`: `none` (не грузить), `domcontentloaded`, `load`. При значении `none` навигация выполняется клиентом и стартовая вкладка останется пустой (включая VNC). |
 
-Порты и `DISPLAY` выделяются на каждую сессию. При использовании VNC gateway достаточно открыть сам шлюз (Docker: порт `6080`, Kubernetes: путь `/vnc`). Внешние URL должны указывать на маршрут, где доступен gateway (например, `/vnc/{id}`), runner автоматически добавит `vnc.html` и `websockify` к базовому пути. Внутри сети контейнеры должны иметь доступ к диапазону `RUNNER_VNC_WS_PORT_MIN`–`RUNNER_VNC_WS_PORT_MAX`. Для headless‑резервов prewarm используется `headless=true`.
+Порты и `DISPLAY` выделяются на каждую сессию. При использовании VNC gateway достаточно открыть сам шлюз (Docker: порт `6080`, Kubernetes: путь `/vnc`). По умолчанию публичные URL содержат префикс `/vnc` (например, `/vnc/{id}`), однако его можно поменять через `workerVnc.runnerPathPrefix` в Helm chart и соответствующие переменные окружения. Runner автоматически добавит `vnc.html` и `websockify` к базовому пути. Внутри сети контейнеры должны иметь доступ к диапазону `RUNNER_VNC_WS_PORT_MIN`–`RUNNER_VNC_WS_PORT_MAX`. Для headless‑резервов prewarm используется `headless=true`.
 
 ### Worker
 

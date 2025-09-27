@@ -67,8 +67,8 @@ Example value:
     "name": "worker-vnc",
     "url": "http://camofleet-worker-vnc:8080",
     "supports_vnc": true,
-    "vnc_ws": "wss://camofleet.local",
-    "vnc_http": "https://camofleet.local"
+    "vnc_ws": "wss://camofleet.local/websockify?token={id}",
+    "vnc_http": "https://camofleet.local/vnc/{id}"
   }
 ]
 ```
@@ -77,8 +77,8 @@ Runner автоматически подменяет порт в этих баз
 
 ### VNC gateway
 
-The gateway accepts HTTP и WebSocket запросы и перенаправляет их на runner без добавления
-дополнительного префикса. Основные
+The gateway принимает HTTP и WebSocket запросы под префиксом `/vnc` (Traefik добавляет его автоматически;
+при необходимости можно изменить конфигурацией Ingress) и перенаправляет их на runner. Основные
 переменные окружения:
 
 - `VNCGATEWAY_RUNNER_HOST` — DNS-имя сервиса с runner-vnc (по умолчанию `camofleet-worker-vnc`).
