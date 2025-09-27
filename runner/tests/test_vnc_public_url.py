@@ -20,7 +20,7 @@ def test_compose_public_url_with_dynamic_ports(manager: SessionManager) -> None:
         query_params={"path": "websockify"},
     )
 
-    assert result == "http://localhost:6930/vnc.html?path=websockify"
+    assert result == "http://localhost:6930/vnc.html?path=websockify&target_port=6930"
 
 
 def test_compose_public_url_with_gateway(manager: SessionManager) -> None:

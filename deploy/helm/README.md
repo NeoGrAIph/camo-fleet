@@ -42,7 +42,9 @@ Open `my-values.yaml` and adjust the options that differ in your environment:
       ws: wss://camofleet.services.synestra.tech/websockify?token={id}
       http: https://camofleet.services.synestra.tech/vnc/{id}
   ```
-  Эти значения попадут в `CONTROL_WORKERS`, поэтому UI и control-plane будут возвращать корректные публичные URL для noVNC.
+  Эти значения попадут в `CONTROL_WORKERS`, поэтому UI и control-plane будут возвращать корректные публичные URL для noVNC. Не
+  убирайте суффикс `/vnc` — runner и VNC-gateway полагаются на него, чтобы прокидывать `target_port` и корректно выбирать порт
+  вебсокета.
 - **`control.config.workers`** – оставьте `null`, чтобы Helm автоматически добавил сервисы `camofleet-worker` и `camofleet-worker-vnc`. Меняйте список только если подключаете внешние воркеры или меняете имена сервисов.
 
 Save the file when you are done.
