@@ -240,6 +240,7 @@ cp .env.example .env
 | `RUNNER_PREWARM_VNC` | `1` | Количество тёплых резервов c VNC (Xvfb+x11vnc+websockify); автоматически отключается, если инструменты VNC недоступны в образе. |
 | `RUNNER_PREWARM_CHECK_INTERVAL_SECONDS` | `2.0` | Период проверки/дополнения пула тёплых резервов. |
 | `RUNNER_START_URL_WAIT` | `load` | Как долго ждать загрузку `start_url`: `none` (не грузить), `domcontentloaded`, `load`. При значении `none` навигация выполняется клиентом и стартовая вкладка останется пустой (включая VNC). |
+| `RUNNER_DISABLE_IPV6` | `true` | Отключает IPv6 в профиле Firefox (`network.dns.disableIPv6`), чтобы не зависеть от поддержки IPv6 в инфраструктуре. |
 
 Порты и `DISPLAY` выделяются на каждую сессию. Убедитесь, что выбранные диапазоны проброшены наружу (Docker: `6900-6999:6900-6999`, `5900-5999:5900-5999`; Kubernetes — отдельный Ingress/Service или hostNetwork). Для headless‑резервов prewarm используется `headless=true`.
 
