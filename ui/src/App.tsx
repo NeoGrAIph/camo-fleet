@@ -201,7 +201,7 @@ export default function App(): JSX.Element {
         worker: form.worker || undefined,
         headless: form.headless,
         idle_ttl_seconds: form.idle,
-        start_url: form.startUrl === '' ? undefined : form.startUrl,
+        start_url: form.startUrl || undefined,
         start_url_wait: form.startUrlWait,
         labels,
         vnc: form.vnc,
