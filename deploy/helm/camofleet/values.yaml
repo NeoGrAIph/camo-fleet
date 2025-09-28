@@ -48,6 +48,7 @@ worker:
     tag: latest
     pullPolicy: IfNotPresent
   runnerResources: {}
+  # Keep HTTP/3 disabled explicitly to avoid Firefox TLS handshake issues
   disableHttp3: true
   networkDiagnostics:
     - https://bot.sannysoft.com
@@ -76,6 +77,7 @@ workerVnc:
     tag: latest
     pullPolicy: IfNotPresent
   runnerResources: {}
+  # Keep HTTP/3 disabled explicitly to avoid Firefox TLS handshake issues
   disableHttp3: true
   networkDiagnostics:
     - https://bot.sannysoft.com

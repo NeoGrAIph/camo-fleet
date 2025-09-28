@@ -54,13 +54,17 @@ Save the file when you are done.
 
 ## 2. Install or upgrade the release
 
-Run the following command from the repository root:
+Run the following command from the repository root. The release must keep HTTP/3
+disabled for the runner images to avoid TLS handshakes failing in Firefox, so
+always pass the explicit overrides (or keep the defaults in your values file):
 
 ```bash
 helm upgrade --install camofleet deploy/helm/camofleet \
   --namespace camofleet \
   --create-namespace \
-  -f my-values.yaml
+  -f my-values.yaml \
+  --set worker.disableHttp3=true \
+  --set workerVnc.disableHttp3=true
 ```
 
 Helm prints a summary similar to:
@@ -68,6 +72,26 @@ Helm prints a summary similar to:
 ```
 Release "camofleet" has been upgraded. Happy Helming!
 ```
+
+After Helm finishes, restart the runner Deployments so that the pods pick up
+the new environment variables:
+
+```bash
+kubectl rollout restart deployment/camofleet-worker -n camofleet
+kubectl rollout restart deployment/camofleet-worker-vnc -n camofleet
+```
+
+Verify that the updated pods see `RUNNER_DISABLE_HTTP3=true` and that TLS checks
+no longer fail inside Firefox. For example:
+
+```bash
+kubectl exec -n camofleet deploy/camofleet-worker -c runner -- env | grep RUNNER_DISABLE_HTTP3
+kubectl exec -n camofleet deploy/camofleet-worker -c runner -- curl -I https://bot.sannysoft.com
+```
+
+The runner image also executes the built-in network diagnostics against the
+same URL on startup, so a successful `curl` response confirms that Firefox is
+ready to reach the site without HTTP/3/TLS issues.
 
 ### Автоматизируем установку/обновление с нуля
 
@@ -152,7 +176,9 @@ Release "camofleet" has been upgraded. Happy Helming!
 
    # --- деплой через helm ---
    log "Установка/обновление helm release camofleet..."
-   helm upgrade --install camofleet deploy/helm/camofleet "${HELM_ARGS[@]}"
+   helm upgrade --install camofleet deploy/helm/camofleet "${HELM_ARGS[@]}" \
+     --set worker.disableHttp3=true \
+     --set workerVnc.disableHttp3=true
 
    log "Готово ✅"
    ```
