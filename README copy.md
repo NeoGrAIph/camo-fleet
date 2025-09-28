@@ -241,7 +241,7 @@ cp .env.example .env
 | `RUNNER_PREWARM_CHECK_INTERVAL_SECONDS` | `2.0` | Период проверки/дополнения пула тёплых резервов. |
 | `RUNNER_START_URL_WAIT` | `load` | Как долго ждать загрузку `start_url`: `none` (не грузить), `domcontentloaded`, `load`. При значении `none` навигация выполняется клиентом и стартовая вкладка останется пустой (включая VNC). |
 | `RUNNER_DISABLE_IPV6` | `true` | Отключает IPv6 в профиле Firefox (`network.dns.disableIPv6`), чтобы не зависеть от поддержки IPv6 в инфраструктуре. |
-| `RUNNER_DISABLE_HTTP3` | `true` | Полностью отключает HTTP/3 в Firefox (`network.http.http3.enabled`, `network.http.http3.enable_0rtt`, `network.http.http3.alt_svc`, `network.http.http3.retry_different_host`, `MOZ_DISABLE_HTTP3`), что устраняет ошибки TLS (`PR_END_OF_FILE_ERROR`) в сетях без поддержки UDP/QUIC. |
+| `RUNNER_DISABLE_HTTP3` | `true` | Полностью отключает HTTP/3 в Firefox (`network.http.http3.enabled`, `network.http.http3.enable_0rtt`, `network.http.http3.enable_alt_svc`/`network.http.http3.alt_svc`, `network.http.http3.retry_different_host`, `MOZ_DISABLE_HTTP3`), что устраняет ошибки TLS (`PR_END_OF_FILE_ERROR`) в сетях без поддержки UDP/QUIC. |
 | `RUNNER_NETWORK_DIAGNOSTICS` | `["https://bot.sannysoft.com"]` | JSON-массив URL, которые runner проверяет при старте, фиксируя поддержку HTTP/2/HTTP/3 в текущей среде. |
 | `RUNNER_DIAGNOSTICS_TIMEOUT_SECONDS` | `8.0` | Таймаут одной проверки в секундах; полезно уменьшить в средах с ограниченным доступом наружу. |
 
