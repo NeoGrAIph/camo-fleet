@@ -49,9 +49,6 @@ worker:
     pullPolicy: IfNotPresent
   runnerResources: {}
   disableHttp3: true
-  networkDiagnostics:
-    - https://bot.sannysoft.com
-  diagnosticsTimeoutSeconds: 8
   runnerExtraEnv: []
   image:
     repository: camofleet-worker
@@ -77,9 +74,6 @@ workerVnc:
     pullPolicy: IfNotPresent
   runnerResources: {}
   disableHttp3: true
-  networkDiagnostics:
-    - https://bot.sannysoft.com
-  diagnosticsTimeoutSeconds: 8
   runnerExtraEnv: []
   gatewayImage:
     repository: camofleet-vnc-gateway

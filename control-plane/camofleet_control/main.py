@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
@@ -19,11 +18,7 @@ from .config import ControlSettings, WorkerConfig, load_settings
 from .models import (
     CreateSessionRequest,
     CreateSessionResponse,
-    DiagnosticsReport,
-    DiagnosticsTarget,
-    DiagnosticsProbe,
     SessionDescriptor,
-    WorkerDiagnostics,
     WorkerStatus,
 )
 from .service import worker_client
@@ -71,97 +66,6 @@ def get_settings() -> ControlSettings:
     return load_settings()
 
 
-def _stringify(value: Any) -> str:
-    """Convert ``value`` to a human-readable string."""
-
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value
-    return str(value)
-
-
-def _extract_checks(detail: Mapping[str, Any] | None) -> dict[str, str]:
-    """Normalise the ``checks`` map from a worker's health payload."""
-
-    if not isinstance(detail, Mapping):
-        return {}
-    raw_checks = detail.get("checks")
-    if not isinstance(raw_checks, Mapping):
-        return {}
-    return {str(key): _stringify(value) or "unknown" for key, value in raw_checks.items()}
-
-
-def _extract_targets(payload: Mapping[str, Any] | None) -> list[DiagnosticsTarget]:
-    """Parse diagnostics payload into structured targets."""
-
-    if not isinstance(payload, Mapping):
-        return []
-    raw_results = payload.get("results")
-    if not isinstance(raw_results, Mapping):
-        return []
-
-    targets: list[DiagnosticsTarget] = []
-    for raw_url, raw_probes in raw_results.items():
-        if not isinstance(raw_probes, Mapping):
-            continue
-        probes: list[DiagnosticsProbe] = []
-        for protocol, data in raw_probes.items():
-            if not isinstance(data, Mapping):
-                continue
-            status = _stringify(data.get("status")) or "unknown"
-            detail = _stringify(data.get("detail")) or ""
-            probes.append(
-                DiagnosticsProbe(
-                    protocol=str(protocol),
-                    status=status,
-                    detail=detail,
-                )
-            )
-        if probes:
-            targets.append(DiagnosticsTarget(url=str(raw_url), probes=probes))
-    return targets
-
-
-def build_diagnostics_report(workers: Iterable[WorkerStatus]) -> DiagnosticsReport:
-    """Create a diagnostics report payload consumable by the UI."""
-
-    worker_entries: list[WorkerDiagnostics] = []
-    for worker in workers:
-        detail = worker.detail or {}
-        notes: list[str] = []
-        if not worker.healthy:
-            notes.append("Worker is unreachable; diagnostics data may be stale.")
-
-        diagnostics_payload = detail.get("diagnostics") if isinstance(detail, Mapping) else None
-        if isinstance(diagnostics_payload, Mapping):
-            status = _stringify(diagnostics_payload.get("status")) or "unknown"
-            targets = _extract_targets(diagnostics_payload)
-            if status == "complete" and not targets:
-                notes.append("Diagnostics completed but no targets were returned.")
-        else:
-            status = "disabled" if diagnostics_payload is None else "unknown"
-            targets = []
-            if diagnostics_payload is not None:
-                notes.append("Diagnostics payload returned by worker is not understood.")
-
-        worker_entries.append(
-            WorkerDiagnostics(
-                name=worker.name,
-                healthy=worker.healthy,
-                diagnostics_status=status,
-                checks=_extract_checks(detail),
-                targets=targets,
-                notes=notes,
-            )
-        )
-
-    return DiagnosticsReport(
-        generated_at=datetime.now(timezone.utc),
-        workers=worker_entries,
-    )
-
-
 def create_app(settings: ControlSettings | None = None) -> FastAPI:
     """Instantiate the FastAPI application used by the control plane."""
 
@@ -197,13 +101,6 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         """Expose individual worker health data."""
 
         return await gather_worker_status(state.list_workers(), cfg)
-
-    @app.post("/diagnostics", response_model=DiagnosticsReport)
-    async def diagnostics_endpoint(state: AppState = Depends(get_state)) -> DiagnosticsReport:
-        """Trigger a fresh diagnostics report across all workers."""
-
-        statuses = await gather_worker_status(state.list_workers(), cfg)
-        return build_diagnostics_report(statuses)
 
     @app.get("/sessions", response_model=list[SessionDescriptor])
     async def list_sessions(state: AppState = Depends(get_state)) -> list[SessionDescriptor]:

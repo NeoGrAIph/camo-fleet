@@ -41,8 +41,6 @@ class RunnerSettings(BaseSettings):
     start_url_wait: Literal["none", "domcontentloaded", "load"] = "load"
     disable_ipv6: bool = True
     disable_http3: bool = True
-    network_diagnostics: list[str] = Field(default_factory=lambda: ["https://bot.sannysoft.com"])
-    diagnostics_timeout_seconds: Annotated[float, Field(gt=0.0, le=60.0)] = 8.0
 
     # Prewarm pool: keep a small number of ready-to-serve browser servers
     # Separate targets for headless (no VNC) and VNC sessions

@@ -29,31 +29,6 @@ export interface SessionItem {
 const API_BASE =
   import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_BASE ?? '/api';
 
-export interface DiagnosticsProbe {
-  protocol: string;
-  status: string;
-  detail: string;
-}
-
-export interface DiagnosticsTarget {
-  url: string;
-  probes: DiagnosticsProbe[];
-}
-
-export interface WorkerDiagnosticsReport {
-  name: string;
-  healthy: boolean;
-  diagnostics_status: string;
-  checks: Record<string, string>;
-  targets: DiagnosticsTarget[];
-  notes: string[];
-}
-
-export interface DiagnosticsReport {
-  generated_at: string;
-  workers: WorkerDiagnosticsReport[];
-}
-
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -99,8 +74,4 @@ export function touchSession(worker: string, id: string): Promise<SessionItem> {
   return request<SessionItem>(`/sessions/${worker}/${id}/touch`, {
     method: 'POST',
   });
-}
-
-export function runDiagnostics(): Promise<DiagnosticsReport> {
-  return request<DiagnosticsReport>('/diagnostics', { method: 'POST' });
 }
