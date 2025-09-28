@@ -777,9 +777,12 @@ class SessionManager:
         """Spawn a Camoufox Playwright server for a session."""
 
         opts = launch_options(headless=headless)
+        firefox_prefs = opts.setdefault("firefox_user_prefs", {})
         if self._settings.disable_ipv6:
-            firefox_prefs = opts.setdefault("firefox_user_prefs", {})
             firefox_prefs.setdefault("network.dns.disableIPv6", True)
+        if self._settings.disable_http3:
+            firefox_prefs.setdefault("network.http.http3.enabled", False)
+            firefox_prefs.setdefault("network.http.http3.enable_0rtt", False)
         env_vars = {k: v for k, v in (opts.get("env") or {}).items() if v is not None}
         if display:
             env_vars["DISPLAY"] = display
