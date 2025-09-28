@@ -183,7 +183,8 @@ HELM_ARGS=(
 
 # --- деплой через helm ---
 log "Установка/обновление helm release camofleet..."
-log "Готово ✅"install camofleet deploy/helm/camofleet "${HELM_ARGS[@]}"
+helm upgrade --install camofleet deploy/helm/camofleet "${HELM_ARGS[@]}"
+log "Готово ✅"
 ```
 
 2. Отредактируйте блок «настройте под себя»: укажите реестр, пространство имён и пути к Dockerfile. Если вы используете собственный приватный реестр k3s (`k3s ctr images import`), поменяйте `CONTAINERD_REF_PREFIX` и при необходимости задайте отличный от него `IMAGE_REGISTRY` (значение попадёт в `global.imageRegistry`). При необходимости замените `PUBLIC_HOST` на свой домен.
