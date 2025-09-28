@@ -158,6 +158,7 @@ kubectl apply -k deploy/k8s
 | `RUNNER_PREWARM_CHECK_INTERVAL_SECONDS` | `2.0` | Период проверки/дополнения пула тёплых резервов. |
 | `RUNNER_START_URL_WAIT` | `load` | Как долго ждать загрузку `start_url`: `none` (не грузить), `domcontentloaded`, `load`. При значении `none` навигация выполняется клиентом и стартовая вкладка останется пустой (включая VNC). |
 | `RUNNER_DISABLE_IPV6` | `true` | Отключает IPv6 в профиле Firefox (`network.dns.disableIPv6`), чтобы не зависеть от поддержки IPv6 в инфраструктуре. |
+| `RUNNER_DISABLE_HTTP3` | `true` | Запрещает HTTP/3 и 0-RTT в Firefox (`network.http.http3.enabled`, `network.http.http3.enable_0rtt`), чтобы избежать ошибок TLS в сетях без поддержки UDP/QUIC. |
 
 Порты и `DISPLAY` выделяются на каждую сессию. При использовании VNC gateway достаточно открыть сам шлюз (Docker: порт `6080`, Kubernetes: путь `/vnc`). По умолчанию публичные URL содержат префикс `/vnc` (например, `/vnc/{id}`), однако его можно поменять через `workerVnc.runnerPathPrefix` в Helm chart и соответствующие переменные окружения. Runner автоматически добавит `vnc.html` и `websockify` к базовому пути. Внутри сети контейнеры должны иметь доступ к диапазону `RUNNER_VNC_WS_PORT_MIN`–`RUNNER_VNC_WS_PORT_MAX`. Для headless‑резервов prewarm используется `headless=true`.
 

@@ -40,6 +40,7 @@ class RunnerSettings(BaseSettings):
     vnc_startup_timeout_seconds: Annotated[float, Field(gt=0.0, le=30.0)] = 5.0
     start_url_wait: Literal["none", "domcontentloaded", "load"] = "load"
     disable_ipv6: bool = True
+    disable_http3: bool = True
 
     # Prewarm pool: keep a small number of ready-to-serve browser servers
     # Separate targets for headless (no VNC) and VNC sessions
