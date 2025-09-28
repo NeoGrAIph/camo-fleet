@@ -137,3 +137,36 @@ def test_launch_browser_server_overrides_moz_disable_http3(monkeypatch):
         assert captured_config["config"]["env"]["MOZ_DISABLE_HTTP3"] == "1"
 
     asyncio.run(run_test())
+
+
+def test_disable_http3_drains_prewarmed(monkeypatch):
+    from camoufox_runner.sessions import SessionManager
+
+    class DummySettings:
+        disable_http3 = False
+        disable_ipv6 = False
+        vnc_display_min = 100
+        vnc_display_max = 100
+        vnc_port_min = 5900
+        vnc_port_max = 5900
+        vnc_ws_port_min = 6900
+        vnc_ws_port_max = 6900
+        prewarm_headless = 0
+        prewarm_vnc = 0
+        start_url_wait = "load"
+
+    settings = DummySettings()
+    manager = SessionManager(settings=settings, playwright=None)
+
+    drained = False
+
+    async def fake_close_prewarmed(self):
+        nonlocal drained
+        drained = True
+
+    monkeypatch.setattr(SessionManager, "_close_prewarmed", fake_close_prewarmed)
+
+    asyncio.run(manager.disable_http3())
+
+    assert settings.disable_http3 is True
+    assert drained is True

@@ -76,6 +76,17 @@ class AppState:
                 else:
                     self.diagnostics = results
                     self.diagnostics_status = "complete"
+                    failing_http3 = [
+                        url
+                        for url, outcome in results.items()
+                        if outcome.get("http3", {}).get("status") == "error"
+                    ]
+                    if failing_http3 and not self.settings.disable_http3 and self.manager:
+                        LOGGER.warning(
+                            "HTTP/3 probe failed for %s — disabling HTTP/3 for future sessions",
+                            ", ".join(failing_http3),
+                        )
+                        await self.manager.disable_http3()
 
             self._diagnostics_task = asyncio.create_task(
                 _run_diagnostics(), name="camoufox-diagnostics"
