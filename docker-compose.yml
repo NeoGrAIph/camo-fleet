@@ -5,6 +5,9 @@ services:
       dockerfile: docker/Dockerfile.runner
     environment:
       RUNNER_PORT: 8070
+      RUNNER_DISABLE_HTTP3: 'true'
+      RUNNER_NETWORK_DIAGNOSTICS: '["https://bot.sannysoft.com"]'
+      RUNNER_DIAGNOSTICS_TIMEOUT_SECONDS: '8'
     expose:
       - '8070'
 
@@ -16,6 +19,9 @@ services:
       RUNNER_PORT: 8070
       RUNNER_VNC_WS_BASE: ws://localhost:6080/vnc
       RUNNER_VNC_HTTP_BASE: http://localhost:6080/vnc
+      RUNNER_DISABLE_HTTP3: 'true'
+      RUNNER_NETWORK_DIAGNOSTICS: '["https://bot.sannysoft.com"]'
+      RUNNER_DIAGNOSTICS_TIMEOUT_SECONDS: '8'
     expose:
       - '8070'
 

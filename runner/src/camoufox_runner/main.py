@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 
 from fastapi import Depends, FastAPI, HTTPException, Response, status
@@ -10,7 +12,9 @@ from playwright.async_api import async_playwright
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
 
 from .config import RunnerSettings, load_settings
+from .diagnostics import run_network_diagnostics
 from .models import (
+    DiagnosticsPayload,
     HealthResponse,
     SessionCreateRequest,
     SessionDeleteResponse,
@@ -34,6 +38,10 @@ class AppState:
         self.registry = CollectorRegistry()
         # Store the Playwright object so we can stop it during shutdown.
         self._playwright = None
+        # Diagnostics task and cached results.
+        self._diagnostics_task: asyncio.Task[None] | None = None
+        self.diagnostics: dict[str, dict[str, dict[str, str]]] | None = None
+        self.diagnostics_status: str = "pending" if settings.network_diagnostics else "disabled"
 
     async def startup(self) -> None:
         """Initialise Playwright and the session manager."""
@@ -44,6 +52,35 @@ class AppState:
         await manager.start()
         self.manager = manager
 
+        if self.settings.network_diagnostics:
+            async def _run_diagnostics() -> None:
+                try:
+                    LOGGER.info(
+                        "Running network diagnostics for %d target(s)",
+                        len(self.settings.network_diagnostics),
+                    )
+                    results = await run_network_diagnostics(
+                        self.settings.network_diagnostics,
+                        timeout=self.settings.diagnostics_timeout_seconds,
+                        logger=LOGGER,
+                    )
+                except Exception as exc:  # pragma: no cover - diagnostic failures depend on env
+                    LOGGER.exception("Network diagnostics failed", exc_info=exc)
+                    self.diagnostics_status = "error"
+                    self.diagnostics = {
+                        "__internal__": {
+                            "http2": {"status": "error", "detail": repr(exc)},
+                            "http3": {"status": "skipped", "detail": "not executed"},
+                        }
+                    }
+                else:
+                    self.diagnostics = results
+                    self.diagnostics_status = "complete"
+
+            self._diagnostics_task = asyncio.create_task(
+                _run_diagnostics(), name="camoufox-diagnostics"
+            )
+
     async def shutdown(self) -> None:
         """Gracefully shut down the session manager and Playwright."""
 
@@ -52,6 +89,10 @@ class AppState:
             await self.manager.close()
         if self._playwright:
             await self._playwright.stop()
+        if self._diagnostics_task:
+            self._diagnostics_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._diagnostics_task
 
 
 def get_settings() -> RunnerSettings:
@@ -100,7 +141,14 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
         """Simple endpoint used for readiness checks."""
 
         checks = {"playwright": "ok" if state.manager else "starting"}
-        return HealthResponse(status="ok", version=app.version, checks=checks)
+        diagnostics_payload: DiagnosticsPayload | None = None
+        if state.diagnostics_status != "disabled":
+            diagnostics_payload = DiagnosticsPayload(
+                status=state.diagnostics_status, results=state.diagnostics
+            )
+        return HealthResponse(
+            status="ok", version=app.version, checks=checks, diagnostics=diagnostics_payload
+        )
 
     @app.get("/sessions", response_model=list[SessionDetail])
     async def list_sessions(manager: SessionManager = Depends(get_manager)) -> list[SessionDetail]:
