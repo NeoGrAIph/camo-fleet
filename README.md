@@ -139,9 +139,6 @@ kubectl apply -k deploy/k8s
 
 В результате будут созданы namespace `camofleet`, деплойменты/сервисы для всех компонентов и ingress с TLS.
 
-> [!IMPORTANT]
-> Runner-контейнеры в Kubernetes по умолчанию запрашивают минимум 1 vCPU и 1 ГиБ памяти (`worker.runnerResources` и `workerVnc.runnerResources`). Эти значения обеспечивают стабильную работу браузера и при необходимости могут быть переопределены в `values.yaml` или через `--set`.
-
 ## Переменные окружения
 
 ### Runner
