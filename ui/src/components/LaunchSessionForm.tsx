@@ -107,7 +107,8 @@ export function LaunchSessionForm({
       <label>
         Start URL (optional)
         <input
-          type="url"
+          type="text"
+          inputMode="url"
           placeholder="https://example.org"
           value={form.startUrl}
           onChange={(event) =>
