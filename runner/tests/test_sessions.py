@@ -134,6 +134,10 @@ def test_launch_browser_server_overrides_moz_disable_http3(monkeypatch):
         server = await manager._launch_browser_server(headless=True, vnc=False, display=None)
         await server.close()
 
-        assert captured_config["config"]["env"]["MOZ_DISABLE_HTTP3"] == "1"
+        config = captured_config["config"]
+        assert config["env"]["MOZ_DISABLE_HTTP3"] == "1"
+        prefs = config["firefoxUserPrefs"]
+        assert prefs["network.http.http3.enable_alt_svc"] is False
+        assert prefs["network.http.http3.alt_svc"] is False
 
     asyncio.run(run_test())

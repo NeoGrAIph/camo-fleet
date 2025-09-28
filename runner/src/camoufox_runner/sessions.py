@@ -787,12 +787,11 @@ class SessionManager:
         if self._settings.disable_http3:
             firefox_prefs["network.http.http3.enabled"] = False
             firefox_prefs["network.http.http3.enable_0rtt"] = False
-            # ``alt_svc`` caches HTTP/3 availability per-origin. When a
-            # deployment sits behind an ingress that blocks UDP/QUIC, Firefox
-            # can cache the advertised HTTP/3 endpoint during the very first
-            # navigation and then fail every subsequent retry with
-            # ``PR_END_OF_FILE_ERROR``. Disabling the preference prevents the
-            # browser from attempting the upgrade altogether.
+            # ``enable_alt_svc`` controls whether HTTP/3 Alt-Svc upgrades are
+            # attempted for origins that advertise QUIC support.  Some Firefox
+            # builds still use the legacy ``alt_svc`` preference so keep both
+            # toggles in sync to cover older versions shipped with Playwright.
+            firefox_prefs["network.http.http3.enable_alt_svc"] = False
             firefox_prefs["network.http.http3.alt_svc"] = False
             firefox_prefs["network.http.http3.retry_different_host"] = False
         env_vars = {k: v for k, v in (opts.get("env") or {}).items() if v is not None}
