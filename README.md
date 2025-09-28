@@ -139,6 +139,9 @@ kubectl apply -k deploy/k8s
 
 В результате будут созданы namespace `camofleet`, деплойменты/сервисы для всех компонентов и ingress с TLS.
 
+> [!IMPORTANT]
+> Runner-контейнеры в Kubernetes по умолчанию запрашивают минимум 1 vCPU и 1 ГиБ памяти (`worker.runnerResources` и `workerVnc.runnerResources`). Эти значения обеспечивают стабильную работу браузера и при необходимости могут быть переопределены в `values.yaml` или через `--set`.
+
 ## Переменные окружения
 
 ### Runner
@@ -157,6 +160,7 @@ kubectl apply -k deploy/k8s
 | `RUNNER_PREWARM_VNC` | `1` | Количество тёплых резервов c VNC (Xvfb+x11vnc+websockify); автоматически отключается, если инструменты VNC недоступны в образе. |
 | `RUNNER_PREWARM_CHECK_INTERVAL_SECONDS` | `2.0` | Период проверки/дополнения пула тёплых резервов. |
 | `RUNNER_START_URL_WAIT` | `load` | Как долго ждать загрузку `start_url`: `none` (не грузить), `domcontentloaded`, `load`. При значении `none` навигация выполняется клиентом и стартовая вкладка останется пустой (включая VNC). |
+| `RUNNER_DISABLE_IPV6` | `true` | Отключает IPv6 в профиле Firefox (`network.dns.disableIPv6`), чтобы не зависеть от поддержки IPv6 в инфраструктуре. |
 
 Порты и `DISPLAY` выделяются на каждую сессию. При использовании VNC gateway достаточно открыть сам шлюз (Docker: порт `6080`, Kubernetes: путь `/vnc`). По умолчанию публичные URL содержат префикс `/vnc` (например, `/vnc/{id}`), однако его можно поменять через `workerVnc.runnerPathPrefix` в Helm chart и соответствующие переменные окружения. Runner автоматически добавит `vnc.html` и `websockify` к базовому пути. Внутри сети контейнеры должны иметь доступ к диапазону `RUNNER_VNC_WS_PORT_MIN`–`RUNNER_VNC_WS_PORT_MAX`. Для headless‑резервов prewarm используется `headless=true`.
 
