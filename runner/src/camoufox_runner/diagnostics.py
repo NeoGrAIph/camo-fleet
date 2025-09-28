@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import logging
 import ssl
 from dataclasses import dataclass
 from typing import Literal
 from urllib.parse import urlparse
 
-import httpx
+try:  # pragma: no cover - optional dependency guard
+    import httpx
+except Exception:  # pragma: no cover - optional dependency guard
+    httpx = None  # type: ignore[assignment]
 
 try:  # pragma: no cover - optional dependency guard
     from aioquic.asyncio.client import connect as quic_connect
@@ -19,6 +23,8 @@ try:  # pragma: no cover - optional dependency guard
     _AIOQUIC_AVAILABLE = True
 except Exception:  # pragma: no cover - optional dependency guard
     _AIOQUIC_AVAILABLE = False
+
+_HTTP2_AVAILABLE = importlib.util.find_spec("h2") is not None
 
 LOGGER = logging.getLogger(__name__)
 
@@ -40,6 +46,12 @@ class ProbeOutcome:
 
 async def probe_http2(url: str, *, timeout: float) -> ProbeOutcome:
     """Attempt to perform an HTTP/2 GET against ``url``."""
+
+    if httpx is None:
+        return ProbeOutcome("skipped", "httpx is unavailable")
+
+    if not _HTTP2_AVAILABLE:
+        return ProbeOutcome("skipped", "HTTP/2 dependencies unavailable (install httpx[http2])")
 
     try:
         async with httpx.AsyncClient(http2=True, timeout=timeout) as client:
