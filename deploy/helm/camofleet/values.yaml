@@ -48,6 +48,7 @@ worker:
     tag: latest
     pullPolicy: IfNotPresent
   runnerResources: {}
+  disableHttp3: true
   runnerExtraEnv: []
   image:
     repository: camofleet-worker
@@ -72,6 +73,7 @@ workerVnc:
     tag: latest
     pullPolicy: IfNotPresent
   runnerResources: {}
+  disableHttp3: true
   runnerExtraEnv: []
   gatewayImage:
     repository: camofleet-vnc-gateway
