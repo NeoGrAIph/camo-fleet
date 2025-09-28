@@ -56,13 +56,18 @@ Save the file when you are done.
 
 Run the following command from the repository root. The release must keep HTTP/3
 disabled for the runner images to avoid TLS handshakes failing in Firefox, so
-always pass the explicit overrides (or keep the defaults in your values file):
+always pass the explicit overrides (or keep the defaults in your values file).
+If you are upgrading an existing release that was installed before the
+`worker.disableHttp3` flags were added, add `--reset-values` so Helm discards the
+old release values and the generated manifests once again contain
+`RUNNER_DISABLE_HTTP3=true` for every runner container:
 
 ```bash
 helm upgrade --install camofleet deploy/helm/camofleet \
   --namespace camofleet \
   --create-namespace \
   -f my-values.yaml \
+  --reset-values \
   --set worker.disableHttp3=true \
   --set workerVnc.disableHttp3=true
 ```
@@ -177,6 +182,7 @@ ready to reach the site without HTTP/3/TLS issues.
    # --- деплой через helm ---
    log "Установка/обновление helm release camofleet..."
    helm upgrade --install camofleet deploy/helm/camofleet "${HELM_ARGS[@]}" \
+     --reset-values \
      --set worker.disableHttp3=true \
      --set workerVnc.disableHttp3=true
 
