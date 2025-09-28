@@ -800,7 +800,7 @@ class SessionManager:
             # ``MOZ_DISABLE_HTTP3`` short-circuits the networking stack before
             # any profile is created which guarantees that child processes such
             # as the preloaded content process inherit the setting.
-            env_vars.setdefault("MOZ_DISABLE_HTTP3", "1")
+            env_vars["MOZ_DISABLE_HTTP3"] = "1"
         if display:
             env_vars["DISPLAY"] = display
         config: dict[str, Any] = {
