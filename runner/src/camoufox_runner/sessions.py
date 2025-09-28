@@ -24,6 +24,7 @@ from playwright.async_api import Playwright
 
 from .config import RunnerSettings
 from .models import SessionDetail, SessionStatus, SessionSummary
+from .url_utils import navigable_start_url
 
 LOGGER = logging.getLogger(__name__)
 
@@ -373,7 +374,10 @@ class SessionManager:
             browser = await self._playwright.firefox.connect(handle.server.ws_endpoint)
             context = await browser.new_context()
             page = await context.new_page()
-            await page.goto(handle.start_url, wait_until=handle.start_url_wait)
+            await page.goto(
+                navigable_start_url(handle.start_url),
+                wait_until=handle.start_url_wait,
+            )
             handle.controller_browser = browser
             handle.controller_context = context
             handle.controller_page = page
