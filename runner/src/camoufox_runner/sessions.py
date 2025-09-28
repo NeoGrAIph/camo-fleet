@@ -185,6 +185,15 @@ class SessionManager:
         if self._prewarm_headless_target > 0 or self._prewarm_vnc_target > 0:
             self._prewarm_task = asyncio.create_task(self._prewarm_loop(), name="camoufox-prewarm")
 
+    async def disable_http3(self) -> None:
+        """Force future sessions to launch with HTTP/3 disabled."""
+
+        if getattr(self._settings, "disable_http3", False):
+            return
+        LOGGER.warning("HTTP/3 support is unavailable — draining prewarmed sessions and disabling it")
+        setattr(self._settings, "disable_http3", True)
+        await self._close_prewarmed()
+
     async def close(self) -> None:
         """Stop background tasks and shut down all sessions."""
 
