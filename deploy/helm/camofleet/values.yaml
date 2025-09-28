@@ -47,13 +47,7 @@ worker:
     repository: camofleet-runner
     tag: latest
     pullPolicy: IfNotPresent
-  runnerResources:
-    requests:
-      cpu: "1"
-      memory: "1Gi"
-    limits:
-      cpu: "1"
-      memory: "1Gi"
+  runnerResources: {}
   runnerExtraEnv: []
   image:
     repository: camofleet-worker
@@ -77,13 +71,7 @@ workerVnc:
     repository: camofleet-runner-vnc
     tag: latest
     pullPolicy: IfNotPresent
-  runnerResources:
-    requests:
-      cpu: "1"
-      memory: "1Gi"
-    limits:
-      cpu: "1"
-      memory: "1Gi"
+  runnerResources: {}
   runnerExtraEnv: []
   gatewayImage:
     repository: camofleet-vnc-gateway
