@@ -794,7 +794,7 @@ class SessionManager:
         if self._settings.disable_ipv6:
             firefox_prefs["network.dns.disableIPv6"] = True
         if self._settings.disable_http3:
-            firefox_prefs["network.http.http3.enabled"] = False
+            firefox_prefs["network.http.http3.enable"] = False
             firefox_prefs["network.http.http3.enable_0rtt"] = False
             # ``enable_alt_svc`` controls whether HTTP/3 Alt-Svc upgrades are
             # attempted for origins that advertise QUIC support.  Some Firefox
