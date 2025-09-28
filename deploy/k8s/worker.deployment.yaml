@@ -20,6 +20,14 @@ spec:
           env:
             - name: RUNNER_PORT
               value: "8070"
+            - name: RUNNER_DISABLE_HTTP3
+              value: "true"
+            - name: MOZ_DISABLE_HTTP3
+              value: "1"
+            - name: RUNNER_DISABLE_WEBRTC
+              value: "true"
+            - name: RUNNER_NETWORK_DIAGNOSTICS
+              value: '["https://bot.sannysoft.com"]'
           ports:
             - containerPort: 8070
               name: runner-http

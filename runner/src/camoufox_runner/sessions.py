@@ -803,6 +803,8 @@ class SessionManager:
             firefox_prefs["network.http.http3.enable_alt_svc"] = False
             firefox_prefs["network.http.http3.alt_svc"] = False
             firefox_prefs["network.http.http3.retry_different_host"] = False
+        if self._settings.disable_webrtc:
+            firefox_prefs["media.peerconnection.enabled"] = False
         env_vars = {k: v for k, v in (opts.get("env") or {}).items() if v is not None}
         if self._settings.disable_http3:
             # ``MOZ_DISABLE_HTTP3`` short-circuits the networking stack before

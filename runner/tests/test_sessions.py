@@ -88,6 +88,7 @@ def test_launch_browser_server_overrides_moz_disable_http3(monkeypatch):
 
     class DummySettings:
         disable_http3 = True
+        disable_webrtc = True
         disable_ipv6 = False
         vnc_display_min = 100
         vnc_display_max = 100
@@ -139,6 +140,7 @@ def test_launch_browser_server_overrides_moz_disable_http3(monkeypatch):
         prefs = config["firefoxUserPrefs"]
         assert prefs["network.http.http3.enable_alt_svc"] is False
         assert prefs["network.http.http3.alt_svc"] is False
+        assert prefs["media.peerconnection.enabled"] is False
 
     asyncio.run(run_test())
 
@@ -148,6 +150,7 @@ def test_disable_http3_drains_prewarmed(monkeypatch):
 
     class DummySettings:
         disable_http3 = False
+        disable_webrtc = True
         disable_ipv6 = False
         vnc_display_min = 100
         vnc_display_max = 100
