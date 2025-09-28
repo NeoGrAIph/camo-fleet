@@ -48,8 +48,9 @@ worker:
     tag: latest
     pullPolicy: IfNotPresent
   runnerResources: {}
-  # Keep HTTP/3 disabled explicitly to avoid Firefox TLS handshake issues
+  # Keep HTTP/3 disabled and WebRTC off to avoid Firefox using UDP transports
   disableHttp3: true
+  disableWebrtc: true
   networkDiagnostics:
     - https://bot.sannysoft.com
   diagnosticsTimeoutSeconds: 8
@@ -77,8 +78,9 @@ workerVnc:
     tag: latest
     pullPolicy: IfNotPresent
   runnerResources: {}
-  # Keep HTTP/3 disabled explicitly to avoid Firefox TLS handshake issues
+  # Keep HTTP/3 disabled and WebRTC off to avoid Firefox using UDP transports
   disableHttp3: true
+  disableWebrtc: true
   networkDiagnostics:
     - https://bot.sannysoft.com
   diagnosticsTimeoutSeconds: 8

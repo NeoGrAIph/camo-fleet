@@ -67,6 +67,12 @@ spec:
               value: "{{ .Values.workerVnc.runnerPort }}"
             - name: RUNNER_DISABLE_HTTP3
               value: "{{ ternary "true" "false" .Values.workerVnc.disableHttp3 }}"
+            {{- if .Values.workerVnc.disableHttp3 }}
+            - name: MOZ_DISABLE_HTTP3
+              value: "1"
+            {{- end }}
+            - name: RUNNER_DISABLE_WEBRTC
+              value: "{{ ternary "true" "false" .Values.workerVnc.disableWebrtc }}"
             - name: RUNNER_NETWORK_DIAGNOSTICS
               value: '{{ toJson .Values.workerVnc.networkDiagnostics }}'
             - name: RUNNER_DIAGNOSTICS_TIMEOUT_SECONDS

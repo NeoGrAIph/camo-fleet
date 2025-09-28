@@ -55,12 +55,14 @@ Save the file when you are done.
 ## 2. Install or upgrade the release
 
 Run the following command from the repository root. The release must keep HTTP/3
-disabled for the runner images to avoid TLS handshakes failing in Firefox, so
-always pass the explicit overrides (or keep the defaults in your values file).
+disabled and also turn off WebRTC for the runner images to avoid UDP traffic in
+clusters where only TCP egress is allowed, so always pass the explicit overrides
+(or keep the defaults in your values file).
 If you are upgrading an existing release that was installed before the
 `worker.disableHttp3` flags were added, add `--reset-values` so Helm discards the
 old release values and the generated manifests once again contain
-`RUNNER_DISABLE_HTTP3=true` for every runner container:
+`RUNNER_DISABLE_HTTP3=true` and `RUNNER_DISABLE_WEBRTC=true` for every runner
+container:
 
 ```bash
 helm upgrade --install camofleet deploy/helm/camofleet \
@@ -69,7 +71,9 @@ helm upgrade --install camofleet deploy/helm/camofleet \
   -f my-values.yaml \
   --reset-values \
   --set worker.disableHttp3=true \
-  --set workerVnc.disableHttp3=true
+  --set worker.disableWebrtc=true \
+  --set workerVnc.disableHttp3=true \
+  --set workerVnc.disableWebrtc=true
 ```
 
 Helm prints a summary similar to:
@@ -86,11 +90,12 @@ kubectl rollout restart deployment/camofleet-worker -n camofleet
 kubectl rollout restart deployment/camofleet-worker-vnc -n camofleet
 ```
 
-Verify that the updated pods see `RUNNER_DISABLE_HTTP3=true` and that TLS checks
-no longer fail inside Firefox. For example:
+Verify that the updated pods see `RUNNER_DISABLE_HTTP3=true`,
+`MOZ_DISABLE_HTTP3=1`, and `RUNNER_DISABLE_WEBRTC=true`, and that TLS checks no
+longer fail inside Firefox. For example:
 
 ```bash
-kubectl exec -n camofleet deploy/camofleet-worker -c runner -- env | grep RUNNER_DISABLE_HTTP3
+kubectl exec -n camofleet deploy/camofleet-worker -c runner -- env | grep -E 'HTTP3|WEBRTC'
 kubectl exec -n camofleet deploy/camofleet-worker -c runner -- curl -I https://bot.sannysoft.com
 ```
 
@@ -178,7 +183,9 @@ HELM_ARGS=(
   --set-string "workerVnc.controlOverrides.ws=wss://${PUBLIC_HOST}/websockify?token={id}"
   --set-string "workerVnc.controlOverrides.http=https://${PUBLIC_HOST}/vnc/{id}"
   --set "worker.disableHttp3=true"
+  --set "worker.disableWebrtc=true"
   --set "workerVnc.disableHttp3=true"
+  --set "workerVnc.disableWebrtc=true"
 )
 
 # --- деплой через helm ---

@@ -48,6 +48,8 @@ This creates deployments for headless и VNC воркеров (каждый — 
 - `WORKER_RUNNER_BASE_URL` — адрес sidecar runner'а (по умолчанию `http://localhost:8070`).
 - `WORKER_SUPPORTS_VNC` — флаг, который сигнализирует control-plane, что воркер умеет в VNC.
 - `RUNNER_VNC_WS_BASE` / `RUNNER_VNC_HTTP_BASE` — задаются только для runner-vnc и используются UI.
+- `RUNNER_DISABLE_HTTP3` / `MOZ_DISABLE_HTTP3` — отключают HTTP/3 и Alt-Svc апгрейды в Firefox, чтобы запросы шли по TCP (HTTP/2/1.1).
+- `RUNNER_DISABLE_WEBRTC` — запрещает WebRTC, исключая любые UDP-попытки из браузера внутри кластера.
 
 ### Control-plane
 
