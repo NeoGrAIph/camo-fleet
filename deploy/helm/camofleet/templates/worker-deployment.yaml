@@ -30,6 +30,8 @@ spec:
           env:
             - name: RUNNER_PORT
               value: "{{ .Values.worker.runnerPort }}"
+            - name: RUNNER_DISABLE_HTTP3
+              value: "{{ ternary "true" "false" .Values.worker.disableHttp3 }}"
 {{- with .Values.worker.runnerExtraEnv }}
 {{ toYaml . | indent 12 }}
 {{- end }}
