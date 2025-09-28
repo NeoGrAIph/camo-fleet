@@ -32,6 +32,10 @@ spec:
               value: "{{ .Values.worker.runnerPort }}"
             - name: RUNNER_DISABLE_HTTP3
               value: "{{ ternary "true" "false" .Values.worker.disableHttp3 }}"
+            - name: RUNNER_NETWORK_DIAGNOSTICS
+              value: '{{ toJson .Values.worker.networkDiagnostics }}'
+            - name: RUNNER_DIAGNOSTICS_TIMEOUT_SECONDS
+              value: "{{ .Values.worker.diagnosticsTimeoutSeconds }}"
 {{- with .Values.worker.runnerExtraEnv }}
 {{ toYaml . | indent 12 }}
 {{- end }}

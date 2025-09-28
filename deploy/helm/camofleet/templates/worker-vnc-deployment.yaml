@@ -67,6 +67,10 @@ spec:
               value: "{{ .Values.workerVnc.runnerPort }}"
             - name: RUNNER_DISABLE_HTTP3
               value: "{{ ternary "true" "false" .Values.workerVnc.disableHttp3 }}"
+            - name: RUNNER_NETWORK_DIAGNOSTICS
+              value: '{{ toJson .Values.workerVnc.networkDiagnostics }}'
+            - name: RUNNER_DIAGNOSTICS_TIMEOUT_SECONDS
+              value: "{{ .Values.workerVnc.diagnosticsTimeoutSeconds }}"
             - name: RUNNER_VNC_WS_BASE
               value: ws://localhost:{{ .Values.workerVnc.gatewayPort }}{{ $runnerPathPrefix }}
             - name: RUNNER_VNC_HTTP_BASE

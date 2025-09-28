@@ -15,6 +15,7 @@ dependencies = [
     "camoufox[geoip]>=0.4",
     "httpx>=0.27",
     "prometheus-client>=0.20",
+    "aioquic>=1.2",
 ]
 
 [project.optional-dependencies]

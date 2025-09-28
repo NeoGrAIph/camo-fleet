@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -73,6 +73,7 @@ class HealthResponse(BaseModel):
     status: str
     version: str
     checks: dict[str, str]
+    diagnostics: dict[str, Any] | None = None
 
 
 __all__ = [
