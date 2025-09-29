@@ -115,19 +115,22 @@ set -euo pipefail
 
 # --- настройте под себя ---
 GIT_URL="https://github.com/NeoGrAIph/camo-fleet.git" # адрес репозитория
+GIT_REF="main"                                         # ветка/тег, который разворачиваем
 WORKDIR="$HOME/helm/repo/camo-fleet"                  # куда клонировать
+RELEASE_NAME="camofleet"                              # имя Helm release
 NAMESPACE="camofleet"                                 # namespace в k3s
+CONTAINERD_NAMESPACE="k8s.io"                         # namespace containerd в k3s
 CONTAINERD_REF_PREFIX="docker.io/library"             # префикс ref при импорте в containerd
 IMAGE_REGISTRY="${CONTAINERD_REF_PREFIX}"             # значение для global.imageRegistry
 PUBLIC_HOST="camofleet.services.synestra.tech"        # публичный домен Traefik
 IMAGES=(
-  "camofleet-control:docker/Dockerfile.control"
-  "camofleet-ui:docker/Dockerfile.ui"
-  "camofleet-worker:docker/Dockerfile.worker"
-  "camofleet-runner:docker/Dockerfile.runner"
-  "camofleet-worker-vnc:docker/Dockerfile.worker"
-  "camofleet-runner-vnc:docker/Dockerfile.runner-vnc"
-  "camofleet-vnc-gateway:docker/Dockerfile.vnc-gateway"
+  "camofleet-control docker/Dockerfile.control"
+  "camofleet-ui docker/Dockerfile.ui"
+  "camofleet-worker docker/Dockerfile.worker"
+  "camofleet-worker-vnc docker/Dockerfile.worker"
+  "camofleet-runner docker/Dockerfile.runner"
+  "camofleet-runner-vnc docker/Dockerfile.runner-vnc"
+  "camofleet-vnc-gateway docker/Dockerfile.vnc-gateway"
 )
 
 # --- функции ---
@@ -139,43 +142,77 @@ err() {
   echo -e "\033[1;31m[ERROR]\033[0m $*" >&2
 }
 
+require() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    err "Не найдено обязательное приложение: $1"
+    exit 1
+  fi
+}
+
+# --- проверка окружения ---
+for bin in git docker helm kubectl; do
+  require "$bin"
+done
+
+CTR_BIN="${CTR_BIN:-}"
+if [[ -z "$CTR_BIN" ]]; then
+  CTR_BIN="$(command -v ctr || true)"
+fi
+if [[ -z "$CTR_BIN" ]]; then
+  err "Не найден ctr. Установите containerd CLI или задайте путь через CTR_BIN"
+  exit 1
+fi
+
+SUDO=""
+if [[ $EUID -ne 0 ]]; then
+  if command -v sudo >/dev/null 2>&1; then
+    SUDO="sudo"
+  else
+    err "Скрипт требует root для ctr. Запустите под sudo или установите sudo"
+    exit 1
+  fi
+fi
+
 # --- подготовка репозитория ---
 mkdir -p "$(dirname "$WORKDIR")"
-if [ ! -d "$WORKDIR/.git" ]; then
+if [[ ! -d "$WORKDIR/.git" ]]; then
   log "Клонирование репозитория..."
   git clone "$GIT_URL" "$WORKDIR"
 else
   log "Обновление репозитория..."
-  cd "$WORKDIR"
-  git fetch --all
-  git reset --hard origin/main
+fi
+git -C "$WORKDIR" fetch origin --tags
+git -C "$WORKDIR" checkout "$GIT_REF"
+if git -C "$WORKDIR" rev-parse --verify --quiet "origin/${GIT_REF}"; then
+  git -C "$WORKDIR" reset --hard "origin/${GIT_REF}"
+else
+  git -C "$WORKDIR" reset --hard "$GIT_REF"
 fi
 cd "$WORKDIR"
 
 # --- сборка образов ---
 for mapping in "${IMAGES[@]}"; do
-  IMAGE="${mapping%%:*}"
-  DOCKERFILE="${mapping#*:}"
+  IMAGE="${mapping%% *}"
+  DOCKERFILE="${mapping#* }"
   IMAGE_TAG="${IMAGE}:latest"
   CONTAINERD_REF="${CONTAINERD_REF_PREFIX}/${IMAGE_TAG}"
 
-  log "Удаление старого образа $IMAGE_TAG (если есть)..."
-  sudo ctr -n k8s.io images rm "${CONTAINERD_REF}" || true
-  docker rmi "${IMAGE_TAG}" || true
+  log "Сборка образа $IMAGE_TAG (Dockerfile: $DOCKERFILE)..."
+  docker build --pull --tag "$IMAGE_TAG" -f "$DOCKERFILE" .
 
-  log "Сборка образа $IMAGE_TAG..."
-  docker build -t "${IMAGE_TAG}" -f "${DOCKERFILE}" .
+  log "Удаление старой версии $CONTAINERD_REF в containerd (если есть)..."
+  $SUDO "$CTR_BIN" -n "$CONTAINERD_NAMESPACE" images rm "$CONTAINERD_REF" >/dev/null 2>&1 || true
 
-  log "Импорт образа $IMAGE_TAG в containerd..."
-  docker save "${IMAGE_TAG}" -o "${IMAGE}.tar"
-  sudo ctr -n k8s.io images import "${IMAGE}.tar"
-  rm -f "${IMAGE}.tar"
+  log "Импорт $IMAGE_TAG в containerd namespace $CONTAINERD_NAMESPACE..."
+  docker save "$IMAGE_TAG" | $SUDO "$CTR_BIN" -n "$CONTAINERD_NAMESPACE" images import - >/dev/null
 done
 
 # --- значения Helm ---
 HELM_ARGS=(
   --namespace "${NAMESPACE}"
   --create-namespace
+  --atomic
+  --reset-values
   --set-string "global.imageRegistry=${IMAGE_REGISTRY}"
   --set-string "ui.controlHost=${PUBLIC_HOST}"
   --set-string "ui.controlScheme=https"
@@ -189,12 +226,20 @@ HELM_ARGS=(
 )
 
 # --- деплой через helm ---
-log "Установка/обновление helm release camofleet..."
-helm upgrade --install camofleet deploy/helm/camofleet "${HELM_ARGS[@]}"
+log "Установка/обновление Helm release ${RELEASE_NAME}..."
+helm upgrade --install "${RELEASE_NAME}" deploy/helm/camofleet "${HELM_ARGS[@]}"
+
+log "Ожидание обновления worker и worker-vnc..."
+for deploy in "${RELEASE_NAME}-worker" "${RELEASE_NAME}-worker-vnc"; do
+  if kubectl get deployment -n "${NAMESPACE}" "$deploy" >/dev/null 2>&1; then
+    kubectl rollout status -n "${NAMESPACE}" "deployment/${deploy}"
+  fi
+done
+
 log "Готово ✅"
 ```
 
-2. Отредактируйте блок «настройте под себя»: укажите реестр, пространство имён и пути к Dockerfile. Если вы используете собственный приватный реестр k3s (`k3s ctr images import`), поменяйте `CONTAINERD_REF_PREFIX` и при необходимости задайте отличный от него `IMAGE_REGISTRY` (значение попадёт в `global.imageRegistry`). При необходимости замените `PUBLIC_HOST` на свой домен.
+2. Отредактируйте блок «настройте под себя»: укажите ветку (`GIT_REF`), реестр, пространство имён и пути к Dockerfile. Если вы используете собственный приватный реестр k3s (`k3s ctr images import`), поменяйте `CONTAINERD_REF_PREFIX` и при необходимости задайте отличный от него `IMAGE_REGISTRY` (значение попадёт в `global.imageRegistry`). При необходимости замените `PUBLIC_HOST` на свой домен и скорректируйте имя релиза.
 3. Дайте скрипту права на выполнение и запустите:
 
    ```bash
