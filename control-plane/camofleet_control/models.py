@@ -51,46 +51,9 @@ class CreateSessionResponse(SessionDescriptor):
     """Session representation returned by POST /sessions."""
 
 
-class DiagnosticsProbe(BaseModel):
-    """Status of a single protocol probe for a target URL."""
-
-    protocol: str
-    status: str
-    detail: str
-
-
-class DiagnosticsTarget(BaseModel):
-    """Aggregated probe results for a particular URL."""
-
-    url: str
-    probes: list[DiagnosticsProbe]
-
-
-class WorkerDiagnostics(BaseModel):
-    """Diagnostics summary captured for a single worker."""
-
-    name: str
-    healthy: bool
-    diagnostics_status: str
-    checks: dict[str, str]
-    targets: list[DiagnosticsTarget]
-    notes: list[str]
-
-
-class DiagnosticsReport(BaseModel):
-    """Environment diagnostics snapshot returned to the UI."""
-
-    generated_at: datetime
-    workers: list[WorkerDiagnostics]
-
-
 __all__ = [
     "WorkerStatus",
     "SessionDescriptor",
     "CreateSessionRequest",
     "CreateSessionResponse",
-    "DiagnosticsProbe",
-    "DiagnosticsTarget",
-    "WorkerDiagnostics",
-    "DiagnosticsReport",
 ]

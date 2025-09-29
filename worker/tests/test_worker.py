@@ -15,16 +15,9 @@ class StubRunner:
     def __init__(self) -> None:
         self.created: list[dict[str, Any]] = []
         self.sessions: dict[str, dict[str, Any]] = {}
-        self.diagnostics: dict[str, Any] | None = {
-            "status": "pending",
-            "results": None,
-        }
 
     async def health(self) -> dict[str, Any]:
-        payload = {"status": "ok", "checks": {"runner": "ok"}}
-        if self.diagnostics is not None:
-            payload["diagnostics"] = self.diagnostics
-        return payload
+        return {"status": "ok", "checks": {"runner": "ok"}}
 
     async def list_sessions(self) -> list[dict[str, Any]]:
         return list(self.sessions.values())
@@ -125,21 +118,3 @@ def test_delete_session_removes_from_store(stub_app: TestClient) -> None:
     list_resp = stub_app.get("/sessions")
     assert list_resp.status_code == 200
     assert list_resp.json() == []
-
-
-def test_health_proxies_runner_diagnostics(stub_app: TestClient) -> None:
-    stub_app.runner_stub.diagnostics = {
-        "status": "complete",
-        "results": {
-            "https://bot.sannysoft.com": {
-                "http2": {"status": "ok", "detail": "HTTP/2 200"},
-                "http3": {"status": "error", "detail": "PR_END_OF_FILE_ERROR"},
-            }
-        },
-    }
-
-    response = stub_app.get("/health")
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["diagnostics"]["status"] == "complete"
-    assert "https://bot.sannysoft.com" in payload["diagnostics"]["results"]
