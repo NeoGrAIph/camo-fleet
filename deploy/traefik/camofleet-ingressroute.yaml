@@ -39,4 +39,4 @@ spec:
           namespace: camofleet
           port: 80
   tls:
-    certResolver: letsencrypt
+    certResolver: lehttp
