@@ -794,6 +794,9 @@ class SessionManager:
         if self._settings.disable_ipv6:
             firefox_prefs["network.dns.disableIPv6"] = True
         if self._settings.disable_http3:
+            # Additional toggles to handle older preference aliases that may be
+            # present in various Firefox builds bundled with Playwright.
+            firefox_prefs["network.http.http3.enabled"] = False
             firefox_prefs["network.http.http3.enable"] = False
             firefox_prefs["network.http.http3.enable_0rtt"] = False
             # ``enable_alt_svc`` controls whether HTTP/3 Alt-Svc upgrades are
@@ -819,6 +822,9 @@ class SessionManager:
             "args": opts.get("args") or [],
             "env": env_vars,
         }
+        # Persist the browser context between launches to speed up repeated
+        # connections from the same worker process.
+        config["persistentContext"] = True
         if executable_path := opts.get("executable_path"):
             config["executablePath"] = executable_path
         if prefs := opts.get("firefox_user_prefs"):
