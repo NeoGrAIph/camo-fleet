@@ -89,8 +89,8 @@ def test_apply_vnc_overrides_matches_helm_defaults() -> None:
         name="worker-vnc",
         url="http://worker-vnc",  # matches the service endpoint rendered by Helm
         supports_vnc=True,
-        vnc_http="http://camofleet-camo-fleet-worker-vnc:6080/vnc/{id}",
-        vnc_ws="ws://camofleet-camo-fleet-worker-vnc:6080/websockify?token={id}",
+        vnc_http="http://camofleet-worker-vnc:6080/vnc/{id}",
+        vnc_ws="ws://camofleet-worker-vnc:6080/websockify?token={id}",
     )
 
     payload = {
@@ -101,10 +101,10 @@ def test_apply_vnc_overrides_matches_helm_defaults() -> None:
     result = apply_vnc_overrides(worker, "session-helm", payload)
 
     assert result["http"] == (
-        "http://camofleet-camo-fleet-worker-vnc:6080/"
+        "http://camofleet-worker-vnc:6080/"
         "vnc/session-helm/vnc.html?path=vnc%2Fwebsockify&target_port=6930"
     )
     assert result["ws"] == (
-        "ws://camofleet-camo-fleet-worker-vnc:6080/"
+        "ws://camofleet-worker-vnc:6080/"
         "websockify?token=session-helm&target_port=6930"
     )
