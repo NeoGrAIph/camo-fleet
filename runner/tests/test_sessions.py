@@ -137,7 +137,9 @@ def test_launch_browser_server_overrides_moz_disable_http3(monkeypatch):
 
         config = captured_config["config"]
         assert config["env"]["MOZ_DISABLE_HTTP3"] == "1"
+        assert config["persistentContext"] is True
         prefs = config["firefoxUserPrefs"]
+        assert prefs["network.http.http3.enabled"] is False
         assert prefs["network.http.http3.enable"] is False
         assert prefs["network.http.http3.enable_alt_svc"] is False
         assert prefs["network.http.http3.alt_svc"] is False
