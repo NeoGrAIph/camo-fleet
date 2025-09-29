@@ -807,6 +807,14 @@ class SessionManager:
             firefox_prefs["network.http.http3.alt_svc"] = False
             firefox_prefs["network.http.http3.retry_different_host"] = False
             firefox_prefs["network.dns.http3_echconfig.enabled"] = False
+            # Firefox 127+ can promote HTTPS RR (SVCB) DNS responses to HTTP/3
+            # connections even when Alt-Svc is disabled.  In isolated
+            # environments the UDP handshake for the QUIC endpoint never
+            # completes which ultimately bubbles up as ``PR_END_OF_FILE_ERROR``
+            # inside the VNC session.  Disabling the HTTPS RR promotion keeps
+            # the resolver on the HTTP/2 code paths for Cloudflare-backed
+            # targets such as ``https://bot.sannysoft.com``.
+            firefox_prefs["network.dns.use_https_rr_as_altsvc"] = False
             # Cloudflare-backed targets such as ``https://bot.sannysoft.com``
             # publish Alt-Svc hints that point to HTTP/3-only backends.  Even
             # with the HTTP/3-specific preferences disabled Firefox can cache
