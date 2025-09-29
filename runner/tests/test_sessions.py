@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 import types
 
@@ -133,18 +134,24 @@ def test_launch_browser_server_overrides_moz_disable_http3(monkeypatch):
 
     async def run_test():
         server = await manager._launch_browser_server(headless=True, vnc=False, display=None)
+        profile_dir = captured_config["config"]["userDataDir"]
+        assert os.path.isdir(profile_dir)
         await server.close()
 
         config = captured_config["config"]
         assert config["env"]["MOZ_DISABLE_HTTP3"] == "1"
         assert config["persistentContext"] is True
+        assert config["userDataDir"] == profile_dir
         prefs = config["firefoxUserPrefs"]
         assert prefs["network.http.http3.enabled"] is False
         assert prefs["network.http.http3.enable"] is False
         assert prefs["network.http.http3.enable_alt_svc"] is False
         assert prefs["network.http.http3.alt_svc"] is False
         assert prefs["network.dns.http3_echconfig.enabled"] is False
+        assert prefs["network.http.altsvc.enabled"] is False
+        assert prefs["network.http.altsvc.https"] is False
         assert prefs["media.peerconnection.enabled"] is False
+        assert not os.path.exists(profile_dir)
 
     asyncio.run(run_test())
 
