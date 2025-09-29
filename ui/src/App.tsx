@@ -1,14 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { DiagnosticsReport, SessionItem, WorkerStatus } from './api';
-import {
-  createSession,
-  deleteSession,
-  fetchSessions,
-  fetchWorkers,
-  touchSession,
-  runDiagnostics,
-} from './api';
-import { EnvironmentDiagnostics } from './components/EnvironmentDiagnostics';
+import type { SessionItem, WorkerStatus } from './api';
+import { createSession, deleteSession, fetchSessions, fetchWorkers, touchSession } from './api';
 import { LaunchSessionForm, type LaunchSessionFormState } from './components/LaunchSessionForm';
 import { PinnedSessions } from './components/PinnedSessions';
 import { SessionDetails } from './components/SessionDetails';
@@ -86,9 +78,6 @@ export default function App(): JSX.Element {
   const [now, setNow] = useState(() => Date.now());
   const [mainView, setMainView] = useState<MainView>('sessions');
   const [pinnedKeys, setPinnedKeys] = useState<string[]>([]);
-  const [diagnosticsReport, setDiagnosticsReport] = useState<DiagnosticsReport | null>(null);
-  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
-  const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -287,19 +276,6 @@ export default function App(): JSX.Element {
 
   const onThemeToggle = () => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
 
-  const handleRunDiagnostics = async () => {
-    setDiagnosticsLoading(true);
-    setDiagnosticsError(null);
-    try {
-      const report = await runDiagnostics();
-      setDiagnosticsReport(report);
-    } catch (err) {
-      setDiagnosticsError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setDiagnosticsLoading(false);
-    }
-  };
-
   const handleCopyWs = (endpoint: string) => {
     if (!navigator.clipboard) {
       setError('Clipboard API is not available in this browser.');
@@ -377,13 +353,6 @@ export default function App(): JSX.Element {
             ))}
           </div>
         </section>
-
-        <EnvironmentDiagnostics
-          report={diagnosticsReport}
-          loading={diagnosticsLoading}
-          error={diagnosticsError}
-          onRun={handleRunDiagnostics}
-        />
 
         {mainView === 'sessions' ? (
           <>

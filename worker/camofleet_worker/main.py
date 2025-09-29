@@ -6,7 +6,6 @@ import asyncio
 import contextlib
 import logging
 import uuid
-from typing import Any
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect, status
@@ -106,14 +105,10 @@ def create_app(settings: WorkerSettings | None = None) -> FastAPI:
     async def health(app_state: AppState = Depends(require_state)) -> HealthResponse:
         """Proxy the runner health check and normalise the response."""
 
-        diagnostics: dict[str, Any] | None = None
         try:
             runner_health = await app_state.runner.health()
             status_text = runner_health.get("status", "unknown")
             checks = runner_health.get("checks", {})
-            raw_diagnostics = runner_health.get("diagnostics")
-            if isinstance(raw_diagnostics, dict):
-                diagnostics = raw_diagnostics
         except Exception as exc:  # pragma: no cover - defensive path
             # A failure to reach the runner should not explode the endpoint —
             # callers only need to know that something is degraded.
@@ -124,7 +119,6 @@ def create_app(settings: WorkerSettings | None = None) -> FastAPI:
             status=status_text,
             version=app.version,
             checks=checks,
-            diagnostics=diagnostics,
         )
 
     @app.get("/sessions", response_model=list[SessionDetail])

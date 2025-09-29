@@ -57,20 +57,12 @@ class SessionDeleteResponse(BaseModel):
     status: SessionStatus
 
 
-class DiagnosticsPayload(BaseModel):
-    """Describe the outcome of optional network diagnostics."""
-
-    status: Literal["disabled", "pending", "complete", "error"]
-    results: dict[str, dict[str, dict[str, str]]] | None = None
-
-
 class HealthResponse(BaseModel):
     """Simple health payload for readiness probes."""
 
     status: str
     version: str
     checks: dict[str, str]
-    diagnostics: DiagnosticsPayload | None = None
 
 
 __all__ = [
@@ -79,6 +71,5 @@ __all__ = [
     "SessionSummary",
     "SessionDetail",
     "SessionDeleteResponse",
-    "DiagnosticsPayload",
     "HealthResponse",
 ]
