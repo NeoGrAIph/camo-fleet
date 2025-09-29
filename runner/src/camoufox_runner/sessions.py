@@ -807,6 +807,17 @@ class SessionManager:
             firefox_prefs["network.http.http3.alt_svc"] = False
             firefox_prefs["network.http.http3.retry_different_host"] = False
             firefox_prefs["network.dns.http3_echconfig.enabled"] = False
+            # Cloudflare-backed targets such as ``https://bot.sannysoft.com``
+            # publish Alt-Svc hints that point to HTTP/3-only backends.  Even
+            # with the HTTP/3-specific preferences disabled Firefox can cache
+            # the Alt-Svc entry in ``SiteSecurityServiceState.bin`` and reuse it
+            # for subsequent navigations within the same persistent profile. In
+            # restricted environments (no UDP/QUIC) this manifests as the
+            # ``PR_END_OF_FILE_ERROR`` the cluster observes after the very
+            # first successful visit.  Disabling Alt-Svc at the global layer
+            # prevents Firefox from storing those hints in the first place.
+            firefox_prefs["network.http.altsvc.enabled"] = False
+            firefox_prefs["network.http.altsvc.https"] = False
         if self._settings.disable_webrtc:
             firefox_prefs["media.peerconnection.enabled"] = False
         env_vars = {k: v for k, v in (opts.get("env") or {}).items() if v is not None}
