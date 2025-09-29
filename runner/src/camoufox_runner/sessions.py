@@ -828,6 +828,8 @@ class SessionManager:
             env_vars["MOZ_DISABLE_HTTP3"] = "1"
         if display:
             env_vars["DISPLAY"] = display
+        profile_dir = tempfile.mkdtemp(prefix="camoufox-profile-")
+
         config: dict[str, Any] = {
             "headless": headless,
             "args": opts.get("args") or [],
@@ -836,6 +838,7 @@ class SessionManager:
         # Persist the browser context between launches to speed up repeated
         # connections from the same worker process.
         config["persistentContext"] = True
+        config["userDataDir"] = profile_dir
         if executable_path := opts.get("executable_path"):
             config["executablePath"] = executable_path
         if prefs := opts.get("firefox_user_prefs"):
@@ -883,9 +886,15 @@ class SessionManager:
                 _drain_stream(process.stderr, "camoufox-stderr"),
                 name="camoufox-server-stderr",
             )
-            return _SubprocessBrowserServer(process, ws_endpoint, [stdout_task, stderr_task])
+            return _SubprocessBrowserServer(
+                process,
+                ws_endpoint,
+                [stdout_task, stderr_task],
+                profile_dir,
+            )
         except Exception:
             await _terminate_process(process, kill=True)
+            await asyncio.to_thread(_remove_directory, profile_dir)
             raise
         finally:
             await asyncio.to_thread(_remove_file, config_path)
@@ -897,10 +906,12 @@ class _SubprocessBrowserServer:
         process: aio_subprocess.Process,
         ws_endpoint: str,
         drain_tasks: list[asyncio.Task[None]],
+        profile_dir: str,
     ) -> None:
         self._process = process
         self.ws_endpoint = ws_endpoint
         self._drain_tasks = drain_tasks
+        self._profile_dir = profile_dir
 
     async def close(self) -> None:
         if self._process.returncode is None:
@@ -915,6 +926,9 @@ class _SubprocessBrowserServer:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+        if self._profile_dir:
+            await asyncio.to_thread(_remove_directory, self._profile_dir)
+            self._profile_dir = ""
 
 
 async def _drain_stream(stream: asyncio.StreamReader | None, prefix: str) -> None:
@@ -945,6 +959,15 @@ def _remove_file(path: str) -> None:
         import os
 
         os.remove(path)
+
+
+def _remove_directory(path: str) -> None:
+    """Recursively delete ``path`` if it exists."""
+
+    if not path:
+        return
+    with contextlib.suppress(FileNotFoundError):
+        shutil.rmtree(path)
 
 
 async def _terminate_process(process: aio_subprocess.Process, *, kill: bool = False) -> None:
