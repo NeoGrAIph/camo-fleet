@@ -111,10 +111,10 @@ workerVnc:
     # gateway and the dynamic ports allocated by the runner container.
     ws:
       min: 6900
-      max: 6904
+      max: 6909
     raw:
       min: 5900
-      max: 5904
+      max: 5909
   extraEnv: []
   sessionDefaults: {}
   controlOverrides:
