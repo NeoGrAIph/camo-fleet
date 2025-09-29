@@ -13,13 +13,13 @@ spec:
         - name: camofleet-strip-api
           namespace: camofleet
       services:
-        - name: camofleet-camo-fleet-control
+        - name: camofleet-control
           namespace: camofleet
           port: 9000
     - match: Host(`camofleet.services.synestra.tech`) && PathPrefix(`/vnc`)
       kind: Rule
       services:
-        - name: camofleet-camo-fleet-worker-vnc
+        - name: camofleet-worker-vnc
           namespace: camofleet
           port: 6080
     - match: Host(`camofleet.services.synestra.tech`) && PathPrefix(`/websockify`)
@@ -28,14 +28,14 @@ spec:
         - name: camofleet-add-vnc-prefix
           namespace: camofleet
       services:
-        - name: camofleet-camo-fleet-worker-vnc
+        - name: camofleet-worker-vnc
           namespace: camofleet
           port: 6080
     - match: Host(`camofleet.services.synestra.tech`)
       kind: Rule
       priority: 1
       services:
-        - name: camofleet-camo-fleet-ui
+        - name: camofleet-ui
           namespace: camofleet
           port: 80
   tls:
